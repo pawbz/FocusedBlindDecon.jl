@@ -2,13 +2,10 @@
 __precompile__()
 
 module DeConv
-using DSP
-import JuMIT.DSP
-import JuMIT.Inversion
-import JuMIT.Misfits
-import JuMIT.Conv
-import JuMIT.Grid
-import JuMIT.Inversion
+using Inversion
+using Misfits
+using Conv
+using Grid
 using Optim, LineSearches
 using RecipesBase
 using DataFrames
