@@ -17,7 +17,7 @@ mutable struct Param
 	ntgf::Int64
 	nt::Int64
 	nr::Int64
-	nra::Int64 # save actual nr here, as for mode==2: nr=nr*nr
+	nra::Int64 # save actual nr here, as for mode==:ibd nr=nr*nr
 	gfobs::Array{Float64, 2} # save, before modifying it in obs
 	wavobs::Vector{Float64} # save, before modifying it in obs
 	dobs::Array{Float64,2} # save before modifying it
@@ -46,7 +46,7 @@ mutable struct Param
 	wav_func::Function
 	wav_grad!::Function
 	err::DataFrames.DataFrame
-	mode::Int32
+	mode::Symbol
 	gf_acorr::Conv.Param{Float64,2}
 	dgf_acorr::Array{Float64,2}
 end
@@ -57,7 +57,7 @@ end
 `gfprecon` : a preconditioner applied to each Greens functions [ntgf]
 """
 function Param(ntgf, nt, nr; 
-	       mode=1,
+	       mode=:bd,
 	       gfprecon=nothing,
 	       gfweights=nothing,
 	       gfoptim=nothing,
@@ -75,10 +75,10 @@ function Param(ntgf, nt, nr;
 
 	# create models depending on mode
 	nra=nr
-	if(mode==1)
+	if(mode==:bd)
 		obs=Conv.Param(ntwav=nt, ntd=nt, ntgf=ntgf, dims=(nr,), wavlags=[nt-1, 0])
 		cal=deepcopy(obs)
-	elseif(mode==2)
+	elseif(mode==:ibd)
 		nr=nr*nr
 		obs=Conv.Param(ntwav=2*nt-1, ntd=2*nt-1, ntgf=2*ntgf-1, dims=(nr,), wavlags=[nt-1, nt-1], dlags=[nt-1, nt-1], gflags=[ntgf-1, ntgf-1])
 		cal=deepcopy(obs)
@@ -92,10 +92,11 @@ function Param(ntgf, nt, nr;
 	
 	# inversion variables allocation
 	xgf = zeros(length(cal.gf));
-	if(mode==1)
+	if(mode==:bd)
 		xwav = zeros(nt);
-	elseif(mode==2)
-		xwav = zeros(nt-1);
+	elseif(mode==:ibd)
+		xwav = zeros(nt);
+		xwav[1] = 1.0
 	end
 	last_xgf = randn(size(xgf)) # reset last_x
 	last_xwav = randn(size(xwav)) # reset last_x
@@ -149,11 +150,11 @@ function Param(ntgf, nt, nr;
 		copy!(pa.dobs, obstemp.d)
 	end
 
-	if(mode==1)
+	if(mode==:bd)
 		gfobs=pa.gfobs
 		wavobs=pa.wavobs
 		dobs=pa.dobs
-	elseif(mode==2)
+	elseif(mode==:ibd)
 		gfobs=hcat(Conv.xcorr(pa.gfobs)...)
 		wavobs=hcat(Conv.xcorr(pa.wavobs)...)
 		dobs=hcat(Conv.xcorr(pa.dobs)...) # do a cross-correlation 
@@ -187,7 +188,12 @@ function add_gfprecon!(pa::Param, gfprecon=nothing)
 end
 function add_wavprecon!(pa::Param, wavprecon=nothing)
 	# create gf precon
-	(wavprecon===nothing) && (wavprecon=ones(pa.xwav))
+	if(wavprecon===nothing) 
+		wavprecon=ones(pa.xwav)
+		if(pa.mode==:ibd)
+			wavprecon[1]=0.0 # do not update zero lag
+		end
+	end
 	copy!(pa.wavprecon, wavprecon)
 	copy!(pa.wavpreconI, pa.wavprecon)
 	for i in eachindex(wavprecon)
@@ -260,7 +266,7 @@ function update_func_grad!(pa; gfoptim=nothing, wavoptim=nothing, gfαvec=nothin
 	# multi-objective framework
 	paMOwav=Inversion.ParamMO(noptim=length(wavoptim), ninv=length(pa.xwav), αvec=wavαvec,
 			    		optim_func=optim_funcwav,optim_grad=optim_gradwav,
-					x_init=randn(length(pa.xwav),10))
+					x_init=vcat(ones(1,10),randn(length(pa.xwav)-1,10)))
 #	pa.dfwav = OnceDifferentiable(x -> paMOwav.func(x, paMOwav),         
 #			    (storage, x) -> paMOwav.grad!(storage, x, paMOwav))
 	pa.wav_func = x -> paMOwav.func(x, paMOwav)
@@ -278,9 +284,9 @@ end
 
 function ninv(pa)
 	if(pa.attrib_inv == :wav)
-		return pa.nt
+		return length(pa.xwav)
 	else(pa.attrib_inv == :gf)
-		return pa.ntgf*pa.nr
+		return length(pa.xgf)
 	end
 end
 
@@ -293,11 +299,11 @@ give either cal or calsave?
 function err!(pa::Param; cal=pa.cal) 
 	xgf_nodecon=hcat(Conv.xcorr(pa.dobs, lags=[pa.ntgf-1, pa.ntgf-1])...)
 	xgfobs=hcat(Conv.xcorr(pa.gfobs)...) # compute xcorr with reference gf
-	if(pa.mode==1) 
+	if(pa.mode==:bd) 
 		fwav = Misfits.error_after_normalized_autocor(cal.wav, pa.obs.wav)
 		xgfcal=hcat(Conv.xcorr(cal.gf)...) # compute xcorr with reference gf
 		fgf = Misfits.error_squared_euclidean!(nothing, xgfcal, xgfobs, nothing, norm_flag=true)
-	elseif(pa.mode==2)
+	elseif(pa.mode==:ibd)
 		fgf = Misfits.error_squared_euclidean!(nothing, cal.gf, pa.obs.gf, nothing, norm_flag=true)
 		fwav = Misfits.error_squared_euclidean!(nothing, cal.wav, pa.obs.wav, nothing, norm_flag=true)
 	end
@@ -316,14 +322,15 @@ end
 
 function model_to_x!(x, pa)
 	if(pa.attrib_inv == :wav)
-		if(pa.mode==1)
+		if(pa.mode==:bd)
 			for i in eachindex(x)
 				x[i]=pa.cal.wav[i,1]*pa.wavprecon[i] # just take any one receiver
 			end
-		elseif(pa.mode==2)
+		elseif(pa.mode==:ibd)
 			for i in eachindex(x)
-				x[i]=pa.cal.wav[i+pa.nt,1]*pa.wavprecon[i] # just take any one receiver and only positive lags
+				x[i]=pa.cal.wav[i+pa.nt-1,1]*pa.wavprecon[i] # just take any one receiver and positive lags
 			end
+			x[1]=1.0 # zero lag
 		end
 	else(pa.attrib_inv == :gf)
 		for i in eachindex(x)
@@ -336,7 +343,7 @@ end
 
 function x_to_model!(x, pa)
 	if(pa.attrib_inv == :wav)
-		if(pa.mode==1)
+		if(pa.mode==:bd)
 			for j in 1:pa.nr
 				for i in 1:pa.nt
 					# put same in all receivers
@@ -347,14 +354,14 @@ function x_to_model!(x, pa)
 				xn=vecnorm(x)
 				scale!(pa.cal.wav, inv(xn))
 			end
-		elseif(pa.mode==2)
+		elseif(pa.mode==:ibd)
 			for j in 1:pa.nr
-				pa.cal.wav[pa.nt,j]=1.0
+				pa.cal.wav[pa.nt,j]=1.0 # fix zero lag
 				for i in 1:pa.nt-1
 					# put same in all receivers
-					pa.cal.wav[pa.nt+i,j]=x[i]*pa.wavpreconI[i]
+					pa.cal.wav[pa.nt+i,j]=x[i+1]*pa.wavpreconI[i+1]
 					# put same in negative lags
-					pa.cal.wav[pa.nt-i,j]=x[i]*pa.wavpreconI[i]
+					pa.cal.wav[pa.nt-i,j]=x[i+1]*pa.wavpreconI[i+1]
 				end
 			end
 		end
@@ -472,18 +479,18 @@ function Fadj!(pa, x, storage, dcal)
 	storage[:] = 0.
 	if(pa.attrib_inv == :wav)
 		Conv.mod!(pa.cal, :wav, d=dcal, wav=pa.dwav)
-		if(pa.mode==1)
+		if(pa.mode==:bd)
 			# stack ∇wav along receivers
 			for i in 1:size(pa.dwav,2)             
 				for j in 1:size(pa.dwav,1)
 					storage[j] += pa.dwav[j,i]
 				end
 			end
-		elseif(pa.mode==2)
+		elseif(pa.mode==:ibd)
 			for i in 1:size(pa.dwav,2)             
-				for j in 1:pa.nt-1
-					storage[j] += pa.dwav[pa.nt-j,i] # -ve lags
-					storage[j] += pa.dwav[pa.nt+j,i] # -ve lags
+				for j in 2:pa.nt
+					storage[j] += pa.dwav[pa.nt-j+1,i] # -ve lags
+					storage[j] += pa.dwav[pa.nt+j-1,i] # -ve lags
 				end
 			end
 		end
@@ -493,7 +500,7 @@ function Fadj!(pa, x, storage, dcal)
 			if(iszero(pa.wavprecon[i]))
 				storage[i]=0.0
 			else
-				storage[i] = storage[i]/pa.wavprecon[i]
+				storage[i] = storage[i]*pa.wavpreconI[i]
 			end
 		end
 		# factor, because wav was divided by norm of x
@@ -627,7 +634,7 @@ end
 
 
 function initialize!(pa)
-	if(pa.mode==1)
+	if(pa.mode==:bd)
 		# starting random models
 		for i in 1:pa.nt
 			x=(pa.wavprecon[i]≠0.0) ? randn() : 0.0
@@ -635,7 +642,7 @@ function initialize!(pa)
 				pa.cal.wav[i,j]=x
 			end
 		end
-	elseif(pa.mode==2)
+	elseif(pa.mode==:ibd)
 		for i in 1:pa.nt-1
 			x=(pa.wavprecon[i]≠0.0) ? randn() : 0.0
 			for j in 1:pa.nr
@@ -644,7 +651,6 @@ function initialize!(pa)
 			end
 		end
 		pa.cal.wav[pa.nt,:]=1.0
-
 	end
 	for i in eachindex(pa.cal.gf)
 		x=(pa.gfprecon[i]≠0.0) ? randn() : 0.0
@@ -720,13 +726,63 @@ function create_white_weights(ntgf, nt, nr)
 			gfweights[ntgf-i,ir+(ir-1)*nr]=i*2
 		end
 	end
-	return gfprecon, gfweights, wavprecon
+	return gfprecon, gfweights, nothing
 end
+
+"""
+Focused Blind Deconvolution
+"""
+function fbd!(pa)
+
+	(pa.mode≠:ibd) && error("only ibd mode accepted")
+
+	# set α=∞ 
+	gfprecon, gfweights, wavprecon=create_white_weights(size(pa.gfobs,1), size(pa.wavobs), size(pa.gfobs,2))
+	add_gfprecon!(pa, gfprecon)
+	add_gfweights!(pa, gfweights)
+	add_wavprecon!(pa, wavprecon)
+
+	update_func_grad!(pa,gfoptim=[:ls], gfαvec=[1.]);
+	DeConv.initialize!(pa)
+	update_all!(pa, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-6)
+
+	update_calsave!(pa)
+	err!(pa)
+
+	# set α=0
+	remove_gfprecon!(pa, all=true)
+	remove_gfweights!(pa, all=true)
+	update_all!(pa, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-6)
+	#
+	update_calsave!(pa)
+	err!(pa)
+end
+
+function bd!(pa)
+
+	(pa.mode≠:bd) && error("only bd mode accepted")
+
+	gfprecon=nothing
+	gfweights=nothing
+	wavprecon=nothing
+	add_gfprecon!(pa, gfprecon)
+	add_gfweights!(pa, gfweights)
+	add_wavprecon!(pa, wavprecon)
+
+	update_func_grad!(pa,gfoptim=[:ls], gfαvec=[1.]);
+	DeConv.initialize!(pa)
+	update_all!(pa, max_reroundtrips=10, max_roundtrips=100000, roundtrip_tol=1e-6)
+
+	update_calsave!(pa)
+	err!(pa)
+end
+
+
 
 @userplot Plot
 
 
-@recipe function f(p::Plot; rvec=nothing, δt=1.0)
+@recipe function f(p::Plot; rvec=nothing, δt=1.0, attrib=:0)
 	pa=p.args[1]
 	(rvec===nothing) && (rvec=1:pa.nr)
 
@@ -752,74 +808,199 @@ end
 	agf=autocor(pa.cal.gf,1:pa.ntgf-1, demean=true)
 	gfli=max(maximum(abs,agfobs), maximum(abs,agf))
 
-	nwav=length(awavobs)
-	fact=(nwav>1000) ? round(Int,nwav/1000) : 1
+#	awavobs=awavobs[1:fact:nwav] # resample
+#	awav=awav[1:fact:nwav] # resample
 
-	awavobs=awavobs[1:fact:nwav] # resample
-	awav=awav[1:fact:nwav] # resample
-
-	fact=(pa.nt*pa.nr>1000) ? round(Int,pa.nt*pa.nr/1000) : 1
+	#fact=(pa.nt*pa.nr>1000) ? round(Int,pa.nt*pa.nr/1000) : 1
 	# cut receivers
 #	dcal=pa.cal.d[1:fact:pa.nt*pa.nr]
 #	dobs=pa.obs.d[1:fact:pa.nt*pa.nr]
 
-	layout := (3,2)
 
-	@series begin        
-		subplot := 1
-#		aspect_ratio := :auto
-		legend := false
-		l := :stem
-		title := "Observed GF"
-		w := 3
-		gf, pa.obs.gf
+	if(attrib==:0)
+		layout := (3,1)
+
+		@series begin        
+			subplot := 1
+	#		aspect_ratio := :auto
+			legend := false
+	#		l := :plot
+			title := "\$g_0\$"
+			w := 1
+			pa.gfobs
+		end
+		@series begin        
+			subplot := 2
+	#		aspect_ratio := :auto
+			legend := false
+			title := "\$s_0\$"
+			w := 1
+			pa.wavobs
+		end
+		@series begin        
+			subplot := 3
+	#		aspect_ratio := :auto
+			legend := false
+			title := "\$d_i\$"
+			w := 1
+			pa.dobs
+		end
 	end
-	@series begin        
-		subplot := 2
-#		aspect_ratio := :auto
-		legend := false
-		l := :stem
-		title := "Modelled GF"
-		w := 3
-		gf, pa.cal.gf
+
+	if((attrib==:obs) || (attrib==:cal))
+		nwav=length(pa.wavobs)
+		fact=(nwav>1000) ? round(Int,nwav/1000) : 1
+		fnrp=(pa.nr>10) ? round(Int,pa.nr/10) : 1
+		layout := (3,1)
+
+		@series begin        
+			subplot := 1
+	#		aspect_ratio := :auto
+			legend := false
+	#		l := :plot
+			title := "\$g_0\$"
+			w := 1
+			getfield(pa,attrib).gf[:,1:fnrp:end]
+		end
+		@series begin        
+			subplot := 2
+	#		aspect_ratio := :auto
+			legend := false
+			title := "\$s_0\$"
+			w := 1
+			getfield(pa,attrib).wav[1:fact:end,1]
+		end
+		@series begin        
+			subplot := 3
+	#		aspect_ratio := :auto
+			legend := false
+			title := "\$d_i\$"
+			w := 1
+			getfield(getfield(pa,attrib),fieldnames(getfield(pa,attrib))[5])[1:fact:end,1:fnrp:end]
+		end
 	end
-	@series begin        
-		subplot := 3
-#		aspect_ratio := :auto
-		legend := false
-		l := :stem
-		title := "Observed GFX"
-		w := 3
-		gfx, gfxobs
+
+
+	if(attrib==:x)
+		nwav=length(pa.wavobs)
+		fact=(nwav>1000) ? round(Int,nwav/1000) : 1
+
+		fnrp=(pa.nr>10) ? round(Int,pa.nr/10) : 1
+
+		xwavobs=pa.obs.wav[1:fact:end,1]
+		xwavcal=pa.cal.wav[1:fact:end,1]
+		xdcal=getfield(pa.cal,fieldnames(pa.cal)[5])[1:fact*pa.nr:end]
+	        xdobs=getfield(pa.obs,fieldnames(pa.obs)[5])[1:fact*pa.nr:end]
+		xgfcal=pa.cal.gf
+		xgfobs=pa.obs.gf
+		layout := (2,2)
+		@series begin        
+			subplot := 1
+#			aspect_ratio := :equal
+			seriestype := :scatter
+			title := "scatter s"
+			legend := false
+			xwavobs, xwavcal
+		end
+		@series begin        
+			subplot := 2
+#			aspect_ratio := :equal
+			seriestype := :scatter
+			title := "scatter g"
+			legend := false
+			xgfobs[:,1:fnrp:end], xgfcal[:,1:fnrp:end]
+		end
+
+		@series begin        
+			subplot := 3
+#			aspect_ratio := :equal
+			seriestype := :scatter
+			title := "scatter d"
+			legend := false
+			xdobs, xdcal
+		end
 	end
+
+	if(attrib==:precon)
+		layout := (3,1)
+		@series begin        
+			subplot := 1
+	#		aspect_ratio := :auto
+			legend := false
+			title := "gfprecon"
+			w := 1
+			pa.gfprecon
+		end
+		@series begin        
+			subplot := 2
+	#		aspect_ratio := :auto
+			legend := false
+			title := "wavprecon"
+			w := 1
+			pa.wavprecon
+		end
+		@series begin        
+			subplot := 3
+	#		aspect_ratio := :auto
+			legend := false
+			title := "gfweights"
+			w := 1
+			pa.gfweights
+		end
+
+
+
+
+	end
+
+
+#	@series begin        
+#		subplot := 15
+#		aspect_ratio := 1
+#		seriestype := :histogram2d
+#		title := "Scatter Wav"
+#		pa.obs.d, pa.cal.d
+#	end
+#
+	#=
 	@series begin        
 		subplot := 4
 #		aspect_ratio := :auto
 		legend := false
-		title := "Calculated GFX"
-		l := :stem
-		w := 3
-		gfx, gfxcal
+		title := "Observed GFX"
+		w := 1
+		pa.cal.gf
 	end
+	=#
 
-
-	@series begin        
-		subplot := 5
-		aspect_ratio := :equal
-		seriestype := :scatter
-		title := "Scatter GF"
-		legend := false
-		gfxobs, gfxcal
-	end
-
-	@series begin        
-		subplot := 6
-		aspect_ratio := :equal
-		seriestype := :scatter
-		title := "Scatter Wav"
-		legend := false
-		awavobs, awav
-	end
+#	@series begin        
+#		subplot := 4
+##		aspect_ratio := :auto
+#		legend := false
+#		title := "Calculated GFX"
+#		l := :stem
+#		w := 3
+#		gfx, gfxcal
+#	end
+#
+#
+#	@series begin        
+#		subplot := 5
+#		aspect_ratio := :equal
+#		seriestype := :scatter
+#		title := "Scatter GF"
+#		legend := false
+#		gfxobs, gfxcal
+#	end
+#
+#	@series begin        
+#		subplot := 6
+#		aspect_ratio := :equal
+#		seriestype := :scatter
+#		title := "Scatter Wav"
+#		legend := false
+#		awavobs, awav
+#	end
 
 
 #
@@ -888,24 +1069,7 @@ end
 #
 #
 
-#	@series begin        
-#		subplot := 14
-#		aspect_ratio := :equal
-#		seriestype := :histogram2d
-#		title := "Scatter Wav"
-#		legend := false
-#		agfobs, agf
-#	end
-#
-#	@series begin        
-#		subplot := 15
-#		aspect_ratio := 1
-#		seriestype := :histogram2d
-#		title := "Scatter Wav"
-#		legend := false
-#		pa.obs.d, pa.cal.d
-#	end
-#
+
 end
 
 
@@ -931,9 +1095,9 @@ function save(pa::Param, folder; tgridgf=nothing, tgrid=nothing)
 
 	# compute cross-correlations of gf
 	xtgridgf=Grid.M1D_xcorr(tgridgf); # grid
-	if(pa.mode==1)
+	if(pa.mode==:bd)
 		xgfobs=hcat(Conv.xcorr(pa.gfobs)...)
-	elseif(pa.mode==2)
+	elseif(pa.mode==:ibd)
 		xgfobs=pa.obs.gf
 	end
 	file=joinpath(folder, "xgfobs.csv")
@@ -942,9 +1106,9 @@ function save(pa::Param, folder; tgridgf=nothing, tgrid=nothing)
 	file=joinpath(folder, "imxgfobs.csv")
 	CSV.write(file,DataFrame(hcat(repeat(xtgridgf.x,outer=pa.nra),
 				      repeat(1:pa.nra,inner=xtgridgf.nx),vec(xgfobs[:,1:pa.nra]))),)
-	if(pa.mode==1)
+	if(pa.mode==:bd)
 		xgfcal=hcat(Conv.xcorr(pa.cal.gf)...)
-	elseif(pa.mode==2)
+	elseif(pa.mode==:ibd)
 		xgfcal=pa.calsave.gf
 	end
 	file=joinpath(folder, "xgfcal.csv")
@@ -975,10 +1139,10 @@ function save(pa::Param, folder; tgridgf=nothing, tgrid=nothing)
 
 
 	# compute autocorrelations of source
-	if(pa.mode==1)
+	if(pa.mode==:bd)
 		xwavobs=autocor(pa.obs.wav[:,1], 1:pa.nt-1, demean=true)
 		xwavcal=autocor(pa.calsave.wav[:,1], 1:pa.nt-1, demean=true)
-	elseif(pa.mode==2)
+	elseif(pa.mode==:ibd)
 		xwavobs=pa.obs.wav[:,1]
 		xwavcal=pa.calsave.wav[:,1]
 	end
