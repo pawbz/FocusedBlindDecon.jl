@@ -13,6 +13,9 @@ using StatsBase
 using JLD
 using CSV
 using DSP.nextfastfft
+using ProgressMeter
+
+include("Phase.jl")
 
 mutable struct Param
 	ntg::Int64
@@ -50,6 +53,8 @@ mutable struct Param
 	mode::Symbol
 	g_acorr::Conv.Param{Float64,2,2,2}
 	dg_acorr::Array{Float64,2}
+	sproject::ForceAutoCorr
+	saobs::Vector{Float64} # auto correlation of the source (known for mode :bda)
 end
 
 
@@ -68,7 +73,10 @@ function Param(ntg, nt, nr;
 	       sprecon=nothing,
 	       snorm_flag=false,
 	       fft_threads=false,
-	       dobs=nothing, gobs=nothing, sobs=nothing, verbose=false, attrib_inv=:g,) 
+	       fftwflag=FFTW.PATIENT,
+	       dobs=nothing, gobs=nothing, sobs=nothing, verbose=false, attrib_inv=:g,
+	       saobs=nothing,
+	       ) 
 
 	# use maximum threads for fft
 	fft_threads &&  (FFTW.set_num_threads(Sys.CPU_CORES))
@@ -76,13 +84,13 @@ function Param(ntg, nt, nr;
 
 	# create models depending on mode
 	nra=nr
-	if(mode==:bd)
-		obs=Conv.Param(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], slags=[nt-1, 0], fftwflag=FFTW.PATIENT)
+	if(mode ∈ [:bd, :bda])
+		obs=Conv.Param(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], slags=[nt-1, 0], fftwflag=fftwflag)
 		cal=deepcopy(obs)
 	elseif(mode==:ibd)
 		nr=binomial(nr, 2)+nr
 		obs=Conv.Param(ssize=[2*nt-1], dsize=[2*nt-1,nr], gsize=[2*ntg-1,nr], 
-		 slags=[nt-1, nt-1], dlags=[nt-1, nt-1], glags=[ntg-1, ntg-1], fftwflag=FFTW.PATIENT)
+		 slags=[nt-1, nt-1], dlags=[nt-1, nt-1], glags=[ntg-1, ntg-1], fftwflag=fftwflag)
 		cal=deepcopy(obs)
 	end
 	calsave=deepcopy(cal);
@@ -94,7 +102,7 @@ function Param(ntg, nt, nr;
 	
 	# inversion variables allocation
 	xg = zeros(length(cal.g));
-	if(mode==:bd)
+	if(mode ∈ [:bd, :bda])
 		xs = zeros(nt);
 	elseif(mode==:ibd)
 		xs = zeros(nt);
@@ -108,8 +116,16 @@ function Param(ntg, nt, nr;
 
 	err=DataFrame(g=[], g_nodecon=[], s=[],d=[])
 
-	g_acorr=Conv.Param(gsize=[ntg,nra], dsize=[ntg,nra], ssize=[2*ntg-1,nra], slags=[ntg-1, ntg-1], fftwflag=FFTW.PATIENT)
+	g_acorr=Conv.Param(gsize=[ntg,nra], dsize=[ntg,nra], ssize=[2*ntg-1,nra], slags=[ntg-1, ntg-1], fftwflag=fftwflag)
 	dg_acorr=zeros(2*ntg-1, nra)
+
+	if(mode == :bda)
+		(saobs===nothing) && error("need saobs")
+		sproject=DeConv.ForceAutoCorr(saobs, cal.np2)
+	else
+		saobs=zeros(2*nt-1)
+		sproject=DeConv.ForceAutoCorr(saobs, cal.np2)
+	end
 
 	pa=Param(ntg,nt,nr,
 		 nra,
@@ -121,7 +137,7 @@ function Param(ntg, nt, nr;
 	  zeros(xs), zeros(xs),
 	  snorm_flag,snormmat,
 	  dsnorm,attrib_inv,verbose,xg,last_xg,x->randn(),x->randn(),xs,last_xs,x->randn(),x->randn(), err,
-	  mode, g_acorr, dg_acorr)
+	  mode, g_acorr, dg_acorr, sproject, saobs)
 
 	add_gprecon!(pa, gprecon)
 	add_gweights!(pa, gweights)
@@ -153,7 +169,7 @@ function Param(ntg, nt, nr;
 		copy!(pa.dobs, obstemp.d)
 	end
 
-	if(mode==:bd)
+	if(mode ∈ [:bd, :bda])
 		gobs=pa.gobs
 		sobs=pa.sobs
 		dobs=pa.dobs
@@ -302,7 +318,7 @@ give either cal or calsave?
 function err!(pa::Param; cal=pa.cal) 
 	xg_nodecon=hcat(Conv.xcorr(pa.dobs, lags=[pa.ntg-1, pa.ntg-1])...)
 	xgobs=hcat(Conv.xcorr(pa.gobs)...) # compute xcorr with reference g
-	if(pa.mode==:bd) 
+	if(pa.mode ∈ [:bd, :bda])
 		fs = Misfits.error_after_normalized_autocor(cal.s, pa.obs.s)
 		xgcal=hcat(Conv.xcorr(cal.g)...) # compute xcorr with reference g
 		fg = Misfits.error_squared_euclidean!(nothing, xgcal, xgobs, nothing, norm_flag=true)
@@ -325,7 +341,7 @@ end
 
 function model_to_x!(x, pa)
 	if(pa.attrib_inv == :s)
-		if(pa.mode==:bd)
+		if(pa.mode ∈ [:bd, :bda])
 			for i in eachindex(x)
 				x[i]=pa.cal.s[i]*pa.sprecon[i]
 			end
@@ -346,7 +362,7 @@ end
 
 function x_to_model!(x, pa)
 	if(pa.attrib_inv == :s)
-		if(pa.mode==:bd)
+		if(pa.mode ∈ [:bd, :bda])
 			for i in 1:pa.nt
 				# put same in all receivers
 				pa.cal.s[i]=x[i]*pa.spreconI[i]
@@ -477,7 +493,7 @@ function Fadj!(pa, x, storage, dcal)
 	storage[:] = 0.
 	if(pa.attrib_inv == :s)
 		Conv.mod!(pa.cal, :s, d=dcal, s=pa.ds)
-		if(pa.mode==:bd)
+		if(pa.mode ∈ [:bd, :bda])
 			# stack ∇s along receivers
 			for j in 1:size(pa.ds,1)
 				storage[j] = pa.ds[j]
@@ -524,7 +540,7 @@ end
 function update!(pa::Param, x, f, g!; 
 		 store_trace::Bool=false, 
 		 extended_trace::Bool=false, 
-	     f_tol::Float64=1e-8, g_tol::Float64=1e-30, x_tol::Float64=1e-30)
+	     f_tol::Float64=1e-8, g_tol::Float64=1e-30, x_tol::Float64=1e-30, iterations=2000)
 
 	# initial w to x
 	model_to_x!(x, pa)
@@ -539,13 +555,18 @@ function update!(pa::Param, x, f, g!;
 		ConjugateGradient(),
 		       #BFGS(),
 		       Optim.Options(g_tol = g_tol, f_tol=f_tol, x_tol=x_tol,
-		       iterations = 2000, store_trace = store_trace,
+		       iterations = iterations, store_trace = store_trace,
 		       extended_trace=extended_trace, show_trace = false))
 	pa.verbose && println(res)
 
 	x_to_model!(Optim.minimizer(res), pa)
 
 	return res
+end
+
+function project_s!(pa::Param)
+	copy!(pa.ds, pa.cal.s)
+	project!(pa.cal.s, pa.ds, pa.sproject)
 end
 
 function replace_obss!(pa::Param, s)
@@ -562,16 +583,23 @@ function replace_obss!(pa::Param, s)
 	Conv.mod!(pa.obs,:d)
 end
 
-function update_g!(pa, xg)
+function update_g!(pa::Param, xg)
 	pa.attrib_inv=:g    
 	resg = update!(pa, xg,  pa.g_func, pa.g_grad!)
 	fg = Optim.minimum(resg)
 	return fg
 end
 
-function update_s!(pa, xs)
+function update_s!(pa::Param, xs)
 	pa.attrib_inv=:s    
-	ress = update!(pa, xs, pa.s_func, pa.s_grad!)
+	if(pa.mode==:bda)
+		for itr in 1:100
+			ress = update!(pa, xs, pa.s_func, pa.s_grad!, iterations=1)
+			project_s!(pa)
+		end
+	else
+		ress = update!(pa, xs, pa.s_func, pa.s_grad!)
+	end
 	fs = Optim.minimum(ress)
 	return fs
 end
@@ -604,7 +632,7 @@ end
 """
 * re_init_flag :: re-initialize inversions with random input or not?
 """
-function update_all!(pa; max_roundtrips=100, max_reroundtrips=10, ParamAM_func=nothing, roundtrip_tol=1e-6,
+function update_all!(pa::Param; max_roundtrips=100, max_reroundtrips=10, ParamAM_func=nothing, roundtrip_tol=1e-6,
 		     optim_tols=[1e-6, 1e-6], verbose=true, )
 
 	if(ParamAM_func===nothing)
@@ -634,13 +662,11 @@ end
 
 
 function initialize!(pa)
-	if(pa.mode==:bd)
+	if(pa.mode ∈ [:bd, :bda])
 		# starting random models
 		for i in 1:pa.nt
 			x=(pa.sprecon[i]≠0.0) ? randn() : 0.0
-			for j in 1:pa.nr
-				pa.cal.s[i,j]=x
-			end
+			pa.cal.s[i]=x
 		end
 	elseif(pa.mode==:ibd)
 		for i in 1:pa.nt-1
@@ -729,6 +755,7 @@ function create_white_weights(ntg, nt, nr)
 	return gprecon, gweights, nothing
 end
 
+
 """
 Focused Blind Deconvolution
 """
@@ -760,319 +787,18 @@ end
 
 function bd!(pa)
 
-	(pa.mode≠:bd) && error("only bd mode accepted")
-
-	gprecon=nothing
-	gweights=nothing
-	sprecon=nothing
-	add_gprecon!(pa, gprecon)
-	add_gweights!(pa, gweights)
-	add_sprecon!(pa, sprecon)
+	(pa.mode ∉ [:bd, :bda]) && error("only bd modes accepted")
 
 	update_func_grad!(pa,goptim=[:ls], gαvec=[1.]);
 	DeConv.initialize!(pa)
-	update_all!(pa, max_reroundtrips=10, max_roundtrips=100000, roundtrip_tol=1e-6)
+	update_all!(pa, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-8)
 
 	update_calsave!(pa)
 	err!(pa)
 end
 
 
-
-@userplot Plot
-
-
-@recipe function f(p::Plot; rvec=nothing, δt=1.0, attrib=:0)
-	pa=p.args[1]
-	(rvec===nothing) && (rvec=1:pa.nr)
-
-	gxobs=zeros(2*size(pa.obs.g,1)-1, size(pa.obs.g,2))
-	gxcal=similar(gxobs)
-	scobs=vecnorm(pa.obs.g[:,1])^2
-	sccal=vecnorm(pa.cal.g[:,1])^2
-	for ir in 1:pa.nr
-		gxobs[:,ir] = xcorr(pa.obs.g[:,1], pa.obs.g[:, ir])/scobs
-		gxcal[:,ir] = xcorr(pa.cal.g[:,1], pa.cal.g[:, ir])/sccal
-	end
-	#
-	g=collect(1:pa.ntg)*δt
-	gx=collect(-pa.ntg+1:1:pa.ntg-1)*δt
-
-	# time vectors
-	# autocorr s
-	asobs=autocor(pa.obs.s[:,1], 1:pa.nt-1, demean=true)
-	as=autocor(pa.cal.s[:,1], 1:pa.nt-1, demean=true)
-	sli=max(maximum(abs,asobs), maximum(abs,as))
-	# autocorr g 
-	agobs=autocor(pa.obs.g,1:pa.ntg-1, demean=true)
-	ag=autocor(pa.cal.g,1:pa.ntg-1, demean=true)
-	gli=max(maximum(abs,agobs), maximum(abs,ag))
-
-#	asobs=asobs[1:fact:ns] # resample
-#	as=as[1:fact:ns] # resample
-
-	#fact=(pa.nt*pa.nr>1000) ? round(Int,pa.nt*pa.nr/1000) : 1
-	# cut receivers
-#	dcal=pa.cal.d[1:fact:pa.nt*pa.nr]
-#	dobs=pa.obs.d[1:fact:pa.nt*pa.nr]
-
-
-	if(attrib==:0)
-		layout := (3,1)
-
-		@series begin        
-			subplot := 1
-	#		aspect_ratio := :auto
-			legend := false
-	#		l := :plot
-			title := "\$g_0\$"
-			w := 1
-			pa.gobs
-		end
-		@series begin        
-			subplot := 2
-	#		aspect_ratio := :auto
-			legend := false
-			title := "\$s_0\$"
-			w := 1
-			pa.sobs
-		end
-		@series begin        
-			subplot := 3
-	#		aspect_ratio := :auto
-			legend := false
-			title := "\$d_i\$"
-			w := 1
-			pa.dobs
-		end
-	end
-
-	if((attrib==:obs) || (attrib==:cal))
-		ns=length(pa.sobs)
-		fact=(ns>1000) ? round(Int,ns/1000) : 1
-		fnrp=(pa.nr>10) ? round(Int,pa.nr/10) : 1
-		layout := (3,1)
-
-		@series begin        
-			subplot := 1
-	#		aspect_ratio := :auto
-			legend := false
-	#		l := :plot
-			title := "\$g_0\$"
-			w := 1
-			getfield(pa,attrib).g[:,1:fnrp:end]
-		end
-		@series begin        
-			subplot := 2
-	#		aspect_ratio := :auto
-			legend := false
-			title := "\$s_0\$"
-			w := 1
-			getfield(pa,attrib).s[1:fact:end,1]
-		end
-		@series begin        
-			subplot := 3
-	#		aspect_ratio := :auto
-			legend := false
-			title := "\$d_i\$"
-			w := 1
-			getfield(getfield(pa,attrib),fieldnames(getfield(pa,attrib))[5])[1:fact:end,1:fnrp:end]
-		end
-	end
-
-
-	if(attrib==:x)
-		ns=length(pa.sobs)
-		fact=(ns>1000) ? round(Int,ns/1000) : 1
-
-		fnrp=(pa.nr>10) ? round(Int,pa.nr/10) : 1
-
-		xsobs=pa.obs.s[1:fact:end,1]
-		xscal=pa.cal.s[1:fact:end,1]
-		xdcal=getfield(pa.cal,fieldnames(pa.cal)[5])[1:fact*pa.nr:end]
-	        xdobs=getfield(pa.obs,fieldnames(pa.obs)[5])[1:fact*pa.nr:end]
-		xgcal=pa.cal.g
-		xgobs=pa.obs.g
-		layout := (2,2)
-		@series begin        
-			subplot := 1
-#			aspect_ratio := :equal
-			seriestype := :scatter
-			title := "scatter s"
-			legend := false
-			xsobs, xscal
-		end
-		@series begin        
-			subplot := 2
-#			aspect_ratio := :equal
-			seriestype := :scatter
-			title := "scatter g"
-			legend := false
-			xgobs[:,1:fnrp:end], xgcal[:,1:fnrp:end]
-		end
-
-		@series begin        
-			subplot := 3
-#			aspect_ratio := :equal
-			seriestype := :scatter
-			title := "scatter d"
-			legend := false
-			xdobs, xdcal
-		end
-	end
-
-	if(attrib==:precon)
-		layout := (3,1)
-		@series begin        
-			subplot := 1
-	#		aspect_ratio := :auto
-			legend := false
-			title := "gprecon"
-			w := 1
-			pa.gprecon
-		end
-		@series begin        
-			subplot := 2
-	#		aspect_ratio := :auto
-			legend := false
-			title := "sprecon"
-			w := 1
-			pa.sprecon
-		end
-		@series begin        
-			subplot := 3
-	#		aspect_ratio := :auto
-			legend := false
-			title := "gweights"
-			w := 1
-			pa.gweights
-		end
-
-
-
-
-	end
-
-
-#	@series begin        
-#		subplot := 15
-#		aspect_ratio := 1
-#		seriestype := :histogram2d
-#		title := "Scatter Wav"
-#		pa.obs.d, pa.cal.d
-#	end
-#
-	#=
-	@series begin        
-		subplot := 4
-#		aspect_ratio := :auto
-		legend := false
-		title := "Observed GFX"
-		w := 1
-		pa.cal.g
-	end
-	=#
-
-#	@series begin        
-#		subplot := 4
-##		aspect_ratio := :auto
-#		legend := false
-#		title := "Calculated GFX"
-#		l := :stem
-#		w := 3
-#		gx, gxcal
-#	end
-#
-#
-#	@series begin        
-#		subplot := 5
-#		aspect_ratio := :equal
-#		seriestype := :scatter
-#		title := "Scatter GF"
-#		legend := false
-#		gxobs, gxcal
-#	end
-#
-#	@series begin        
-#		subplot := 6
-#		aspect_ratio := :equal
-#		seriestype := :scatter
-#		title := "Scatter Wav"
-#		legend := false
-#		asobs, as
-#	end
-
-
-#
-#	@series begin        
-#		subplot := 3
-#		legend := false
-#		pa.obs.d
-#	end
-#
-#	@series begin        
-#		subplot := 4
-#		legend := false
-#		pa.s
-#	end
-#	@series begin        
-#		subplot := 5
-#		legend := false
-#		pa.cal.g[:,rvec]
-#	end
-#
-#	@series begin        
-#		subplot := 6
-#		legend := false
-#		pa.cal.d[:,rvec]
-#	end
-#
-#	@series begin        
-#		subplot := 7
-#		legend := false
-#		asobs
-#
-#		
-#	end
-#	@series begin        
-#		subplot := 8
-#		legend := false
-#		agobs[:, rvec]
-#	end
-#
-#	@series begin        
-#		subplot := 9
-#		legend := false
-#		
-#	end
-#
-#	@series begin        
-#		subplot := 10
-#		legend := false
-#		as
-#
-#		
-#	end
-#	@series begin        
-#		subplot := 11
-#		legend := false
-#		ag[:,rvec]
-#	end
-#
-#	@series begin        
-#		subplot := 12
-#		legend := false
-#		pa.cal.d[:,rvec]-pa.obs.d[:,rvec]
-#	end
-#
-#
-#
-#
-
-
-end
-
-
+include("Plots.jl")
 
 """
 Save Param
@@ -1095,7 +821,7 @@ function save(pa::Param, folder; tgridg=nothing, tgrid=nothing)
 
 	# compute cross-correlations of g
 	xtgridg=Grid.M1D_xcorr(tgridg); # grid
-	if(pa.mode==:bd)
+	if(pa.mode ∈ [:bd, :bda])
 		xgobs=hcat(Conv.xcorr(pa.gobs)...)
 	elseif(pa.mode==:ibd)
 		xgobs=pa.obs.g
@@ -1106,7 +832,7 @@ function save(pa::Param, folder; tgridg=nothing, tgrid=nothing)
 	file=joinpath(folder, "imxgobs.csv")
 	CSV.write(file,DataFrame(hcat(repeat(xtgridg.x,outer=pa.nra),
 				      repeat(1:pa.nra,inner=xtgridg.nx),vec(xgobs[:,1:pa.nra]))),)
-	if(pa.mode==:bd)
+	if(pa.mode ∈ [:bd, :bda])
 		xgcal=hcat(Conv.xcorr(pa.cal.g)...)
 	elseif(pa.mode==:ibd)
 		xgcal=pa.calsave.g
@@ -1139,7 +865,7 @@ function save(pa::Param, folder; tgridg=nothing, tgrid=nothing)
 
 
 	# compute autocorrelations of source
-	if(pa.mode==:bd)
+	if(pa.mode ∈ [:bd, :bda])
 		xsobs=autocor(pa.obs.s[:,1], 1:pa.nt-1, demean=true)
 		xscal=autocor(pa.calsave.s[:,1], 1:pa.nt-1, demean=true)
 	elseif(pa.mode==:ibd)
@@ -1177,56 +903,6 @@ function save(pa::Param, folder; tgridg=nothing, tgrid=nothing)
 	file=joinpath(folder, "err.csv")
 	CSV.write(file, pa.err)
 end
-
-
-
-
-function phase_retrievel(Ay,
-		 store_trace::Bool=false, 
-		 extended_trace::Bool=false, 
-	     f_tol::Float64=1e-12, g_tol::Float64=1e-30, x_tol::Float64=1e-30)
-
-
-
-	nt1=size(Ay,1)
-	nr1=size(Ay,2)
-
-	nr=Int(sqrt(nr1))
-	nt=Int((nt1+1)/2)
-
-	Ayy=[Ay[:,1+(ir-1)*nr:ir*nr]for ir in 1:nr]
-	pacse=Misfits.Param_CSE(nt,nr,Ay=Ayy)
-	f=function f(x)
-		x=reshape(x,nt,nr)
-		J=Misfits.error_corr_squared_euclidean!(nothing,x,pacse)
-		return J
-	end
-	g! =function g!(storage, x) 
-		x=reshape(x,nt,nr)
-		gg=zeros(nt,nr)
-		Misfits.error_corr_squared_euclidean!(gg, x, pacse)
-		copy!(storage,gg)
-	end
-
-	# initial w to x
-	x=randn(nt*nr)
-
-	"""
-	Unbounded LBFGS inversion, only for testing
-	"""
-	res = optimize(f, g!, x, 
-		       LBFGS(),
-		       Optim.Options(g_tol = g_tol, f_tol=f_tol, x_tol=x_tol,
-		       iterations = 2000, store_trace = store_trace,
-		       extended_trace=extended_trace, show_trace = true))
-	println(res)
-
-	x=reshape(Optim.minimizer(res), nt, nr)
-	
-	return x
-
-end
-
 
 
 
@@ -1340,7 +1016,7 @@ function mod!(pa::ParamD;
 end
 
 
-
 include("Doppler.jl")
+
 
 end # module
