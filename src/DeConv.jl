@@ -16,7 +16,12 @@ using DSP.nextfastfft
 using ProgressMeter
 
 include("DataTypes.jl")
+include("BD.jl")
+include("IBD.jl")
+include("Misfits.jl")
 include("Phase.jl")
+include("Doppler.jl")
+include("Deterministic.jl")
 
 function add_gprecon!(pa, gprecon)
 
@@ -203,12 +208,8 @@ end
 
 
 
+include("Save.jl")
 include("Plots.jl")
-
-
-
-
-include("Doppler.jl")
 
 
 end # module

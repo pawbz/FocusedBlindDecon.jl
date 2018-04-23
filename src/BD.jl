@@ -22,7 +22,7 @@ end
 
 
 """
-`gprecon` : a preconditioner applied to each Greens functions [ntg]
+Constructor for the blind deconvolution problem
 """
 function BD(ntg, nt, nr; 
 	       gprecon=nothing,
@@ -42,22 +42,19 @@ function BD(ntg, nt, nr;
 	# use maximum threads for fft
 	fft_threads &&  (FFTW.set_num_threads(Sys.CPU_CORES))
 
+	# store observed data
+	om=ObsModel(ntg, nt, nr, d=dobs, g=gobs, s=sobs)
 
 	# create models depending on mode
-	obs=Conv.Param(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], slags=[nt-1, 0], fftwflag=fftwflag)
-	cal=deepcopy(obs)
-	calsave=deepcopy(cal);
+	optm=OptimModel(2*ntg-1, 2*nt-1, binomial(nr, 2)+nr, fftwflag=fftwflag, 
+	slags=[nt-1, 0], 
+	dlags=[nt-1, 0], 
+	glags=[ntg-1, 0], 
+		 )
 
-	# initial values are random
-	ds=zeros(cal.s)
-	dg=zeros(cal.g)
-	ddcal=zeros(cal.d)
-	
 	# inversion variables allocation
-	xg = zeros(length(cal.g));
-	xs = zeros(nt);
-	last_xg = randn(size(xg)) # reset last_x
-	last_xs = randn(size(xs)) # reset last_x
+	gx=X(length(optm.cal.g))
+	sx=X(length(optm.cal.s))
 
 	snorm_flag ?	(snormmat=zeros(nt, nt)) : (snormmat=zeros(1,1))
 	snorm_flag ?	(dsnorm=zeros(nt)) : (dsnorm=zeros(1))
@@ -75,58 +72,27 @@ function BD(ntg, nt, nr;
 		sproject=DeConv.ForceAutoCorr(saobs, cal.np2)
 	end
 
-	pa=Param(ntg,nt,nr,
-		 nra,
-	  zeros(ntg,nra), zeros(nt),
-	  zeros(nt, nra),
-	  obs,cal,calsave, dg,ds,ddcal,
-	  zeros(cal.g), zeros(cal.g),
-	  zeros(cal.g),
-	  zeros(xs), zeros(xs),
-	  snorm_flag,snormmat,
-	  dsnorm,attrib_inv,verbose,xg,last_xg,x->randn(),x->randn(),xs,last_xs,x->randn(),x->randn(), err,
-	  mode, g_acorr, dg_acorr, sproject, saobs)
 
-	add_gprecon!(pa, gprecon)
-	add_gweights!(pa, gweights)
-	add_sprecon!(pa, sprecon)
- 
-	if(!(gobs===nothing))
-		for i in eachindex(pa.om.g)
-			pa.om.g[i]=gobs[i]
-		end# save gobs, before modifying
-	end
+	pa=BD(
+		om,		optm,		calsave,		gx,		sx,		snorm_flag,
+		snormmat,		dsnorm,		attrib_inv,		verbose,
+		err,		# trying to penalize the energy in the correlations of g (not in practice),
+		g_acorr,		dg_acorr,		sproject,
+		saobs,)
 
-	if(!(sobs===nothing))
-		for i in eachindex(pa.om.s)
-			pa.om.s[i]=sobs[i]
-		end# save gobs, before modifying
-	end
 
-	if(!(dobs===nothing))
-		for i in eachindex(pa.om.d)
-			pa.om.d[i]=dobs[i]
-		end
-	else # otherwise perform modelling
-		(iszero(pa.om.g) || iszero(pa.om.s)) && error("need gobs and sobs")
-		obstemp=Conv.Param(ssize=[nt], dsize=[nt,nra], gsize=[ntg,nra], 
-		     slags=[nt-1, 0])
-		copy!(obstemp.g, pa.om.g)
-		copy!(obstemp.s, pa.om.s)
-		Conv.mod!(obstemp, :d) # model observed data
-		copy!(pa.om.d, obstemp.d)
-	end
+
 
 	gobs=pa.om.g
 	sobs=pa.om.s
 	dobs=pa.om.d
 
 	# obs.g <-- gobs
-	copy!(pa.optm.obs.g, gobs)
+	replace!(pa.opt, gobs, :obs, :g )
 	# obs.s <-- sobs
-	replace_obss!(pa, sobs)
+	replace!(pa.opt, sobs, :obs, :s )
 	# obs.d <-- dobs
-	copy!(pa.optm.obs.d, dobs) 
+	copy!(pa.optm.obs.d, dobs) #  
 
 	initialize!(pa)
 	update_func_grad!(pa,goptim=goptim,soptim=soptim,gαvec=gαvec,sαvec=sαvec)
@@ -137,17 +103,10 @@ end
 
 
 
-function model_to_x!(x, pa)
+function model_to_x!(x, pa::BD)
 	if(pa.attrib_inv == :s)
-		if(pa.mode ∈ [:bd, :bda])
-			for i in eachindex(x)
-				x[i]=pa.optm.cal.s[i]*pa.sx.precon[i]
-			end
-		elseif(pa.mode==:ibd)
-			for i in eachindex(x)
-				x[i]=pa.optm.cal.s[i+pa.nt-1]*pa.sx.precon[i] # just take any one receiver and positive lags
-			end
-			x[1]=1.0 # zero lag
+		for i in eachindex(x)
+			x[i]=pa.optm.cal.s[i]*pa.sx.precon[i]
 		end
 	else(pa.attrib_inv == :g)
 		for i in eachindex(x)
@@ -159,25 +118,15 @@ end
 
 
 
-function x_to_model!(x, pa)
+function x_to_model!(x, pa::BD)
 	if(pa.attrib_inv == :s)
-		if(pa.mode ∈ [:bd, :bda])
-			for i in 1:pa.nt
-				# put same in all receivers
-				pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
-			end
-			if(pa.snorm_flag)
-				xn=vecnorm(x)
-				scale!(pa.optm.cal.s, inv(xn))
-			end
-		elseif(pa.mode==:ibd)
-			pa.optm.cal.s[pa.nt]=1.0 # fix zero lag
-			for i in 1:pa.nt-1
-				# put same in all receivers
-				pa.optm.cal.s[pa.nt+i]=x[i+1]*pa.sx.preconI[i+1]
-				# put same in negative lags
-				pa.optm.cal.s[pa.nt-i]=x[i+1]*pa.sx.preconI[i+1]
-			end
+		for i in 1:pa.nt
+			# put same in all receivers
+			pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
+		end
+		if(pa.snorm_flag)
+			xn=vecnorm(x)
+			scale!(pa.optm.cal.s, inv(xn))
 		end
 	else(pa.attrib_inv == :g)
 		for i in eachindex(pa.optm.cal.g)
@@ -194,9 +143,12 @@ Create preconditioners using the observed Green Functions.
 * `cflag` : impose causaulity by creating gprecon using gobs
 * `max_tfrac_gprecon` : maximum length of precon windows on g
 """
-function create_weights(ntg, nt, gobs; αexp=0.0, cflag=true,
+function add_precons!(pa::BD, gobs; αexp=0.0, cflag=true,
 		       max_tfrac_gprecon=1.0)
 	
+	ntg=pa.om.ntg
+	nt=pa.om.nt
+
 	ntgprecon=round(Int,max_tfrac_gprecon*ntg);
 
 	nr=size(gobs,2)
@@ -234,11 +186,16 @@ function create_weights(ntg, nt, gobs; αexp=0.0, cflag=true,
 			gweights[:,ir]=0.0
 		end
 	end
-	return gprecon, gweights, sprecon
+
+	add_gprecon!(pa, gprecon)
+	add_gweights!(pa, gweights)
+	add_sprecon!(pa, sprecon)
+ 
+	return pa
 end
 
 
-function bd!(pa)
+function bd!(pa::BD)
 
 	(pa.mode ∉ [:bd, :bda]) && error("only bd modes accepted")
 
@@ -284,7 +241,6 @@ function Fadj!(pa::BD, x, storage, dcal)
 	storage[:] = 0.
 	if(pa.attrib_inv == :s)
 		Conv.mod!(pa.optm.cal, :s, d=dcal, s=pa.optm.ds)
-		# stack ∇s along receivers
 		for j in 1:size(pa.optm.ds,1)
 			storage[j] = pa.optm.ds[j]
 		end
@@ -334,7 +290,7 @@ end
 
 
 
-function project_s!(pa::Param)
+function project_s!(pa::BD)
 	copy!(pa.optm.ds, pa.optm.cal.s)
 	project!(pa.optm.cal.s, pa.optm.ds, pa.sproject)
 end

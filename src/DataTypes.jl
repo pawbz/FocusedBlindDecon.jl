@@ -15,12 +15,13 @@ mutable struct OptimModel
 end
 	
 
-function OptimModel(ntg, nt, nr, fftwflag)
+function OptimModel(ntg, nt, nr, fftwflag; slags=nothing, dlags=nothing, glags=nothing)
 
 	obs=Conv.Param(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], 
-	slags=[div(nt-1,2), nt-div(nt-1,2)-1], 
-	dlags=[div(nt-1,2), nt-1-div(nt-1,2)], 
-	glags=[div(ntg-1,2), ntg-1-div(ntg-1,2)], fftwflag=fftwflag)
+	slags=slags,
+	glags=glags,
+	dlags=dlags,
+	fftwflag=fftwflag)
 	cal=deepcopy(obs)
 
 	# initial values are random

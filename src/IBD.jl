@@ -31,7 +31,11 @@ function IBD(ntg, nt, nr;
 	om=ObsModel(ntg, nt, nr, d=dobs, g=gobs, s=sobs)
 
 	# create models depending on mode
-	optm=OptimModel(2*ntg-1, 2*nt-1, binomial(nr, 2)+nr, fftwflag=fftwflag)
+	optm=OptimModel(2*ntg-1, 2*nt-1, binomial(nr, 2)+nr, fftwflag=fftwflag, 
+	slags=[nt-1, nt-1], 
+	dlags=[nt-1, nt-1], 
+	glags=[ntg-1, ntg-1], 
+		 )
 		
 	# inversion variables allocation
 	gx=X(length(optm.cal.g))

@@ -1,4 +1,6 @@
-
+#=
+This file contains routines that are common to both BD and IBD
+=#
 
 function func_grad!(storage, x::AbstractVector{Float64},pa)
 
@@ -30,10 +32,6 @@ function update_calsave!(pa)
 		copy!(pa.optm.calsave.s, pa.optm.cal.s)
 	end
 end
-
-# add model based constraints here
-
-# all the greens' functions have to be correlated
 
 # exponential-weighted norm for the green functions
 function func_grad_g_weights!(storage, x, pa)
