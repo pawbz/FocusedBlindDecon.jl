@@ -472,21 +472,15 @@ function project!(yout, y, pa=ForceAutoCorr(y))
 	return yout
 end
 
-function phase_retrievel(Ay,
+function phase_retrievel(Ay, nt, nr,
 		 store_trace::Bool=false, 
 		 extended_trace::Bool=false, 
 	     f_tol::Float64=1e-12, g_tol::Float64=1e-30, x_tol::Float64=1e-30)
 
 
 
-	nt1=size(Ay,1)
-	nr1=size(Ay,2)
-
-	nr=Int(sqrt(nr1))
-	nt=Int((nt1+1)/2)
-
-	Ayy=[Ay[:,1+(ir-1)*nr:ir*nr]for ir in 1:nr]
-	pacse=Misfits.Param_CSE(nt,nr,Ay=Ayy)
+#	Ayy=[Ay[:,1+(ir-1)*nr:ir*nr]for ir in 1:nr]
+	pacse=Misfits.Param_CSE(nt,nr,Ay=Ay)
 	f=function f(x)
 		x=reshape(x,nt,nr)
 		J=Misfits.error_corr_squared_euclidean!(nothing,x,pacse)
@@ -506,9 +500,9 @@ function phase_retrievel(Ay,
 	Unbounded LBFGS inversion, only for testing
 	"""
 	res = optimize(f, g!, x, 
-		       LBFGS(),
+		ConjugateGradient(),
 		       Optim.Options(g_tol = g_tol, f_tol=f_tol, x_tol=x_tol,
-		       iterations = 2000, store_trace = store_trace,
+		       iterations = 100, store_trace = store_trace,
 		       extended_trace=extended_trace, show_trace = true))
 	println(res)
 

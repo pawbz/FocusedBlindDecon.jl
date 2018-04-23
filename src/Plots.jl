@@ -9,6 +9,21 @@
 
 	# observed G
 	if(isdefined(pa, :gobs))
+		gobs=pa.gobs
+	elseif(isdefined(pa, :obs1))
+		gobs=pa.obs1.g
+	end
+
+	# observed S
+	if(isdefined(pa, :gobs))
+		gobs=pa.gobs
+	elseif(isdefined(pa, :obs1))
+		gobs=pa.obs1.g
+	end
+
+
+
+
 
 	gxobs=zeros(2*size(pa.obs.g,1)-1, size(pa.obs.g,2))
 	gxcal=similar(gxobs)
