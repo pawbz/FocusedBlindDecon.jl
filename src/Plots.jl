@@ -8,11 +8,6 @@
 
 
 
-	g=getfield(pa,attrib).g
-	s=getfield(pa,attrib).s
-	d=getfield(pa,attrib).d
-
-
 	#=
 
 
@@ -48,19 +43,23 @@
 
 =#
 
-
 	if((attrib==:obs) || (attrib==:cal))
+		layout := (3,1)
+		g=getfield(pa,attrib).g
+		s=getfield(pa,attrib).s
+		temp=getfield(pa,attrib)
+		dd=getfield(temp, fieldnames(temp)[5])
+
 		ns=length(s)
 		fact=(ns>1000) ? round(Int,ns/1000) : 1
 		fnrp=(pa.nr>10) ? round(Int,pa.nr/10) : 1
-		layout := (3,1)
 
 		@series begin        
 			subplot := 1
 	#		aspect_ratio := :auto
 			legend := false
 	#		l := :plot
-			title := "\$g_0\$"
+			title := string("\$g_i\$ ", attrib)
 			w := 1
 			g[:,1:fnrp:end]
 		end
@@ -68,7 +67,7 @@
 			subplot := 2
 	#		aspect_ratio := :auto
 			legend := false
-			title := "\$s_0\$"
+			title := string("\$s\$ ", attrib)
 			w := 1
 			s[1:fact:end,1]
 		end
@@ -76,15 +75,15 @@
 			subplot := 3
 	#		aspect_ratio := :auto
 			legend := false
-			title := "\$d_i\$"
+			title := string("\$d_i\$ ", attrib)
 			w := 1
-			getfield(getfield(pa,attrib),fieldnames(getfield(pa,attrib))[5])[1:fact:end,1:fnrp:end]
+			dd[1:fact:end,1:fnrp:end]
 		end
 	end
 
 
 	if(attrib==:x)
-		ns=length(pa.sobs)
+		ns=length(pa.nt)
 		fact=(ns>1000) ? round(Int,ns/1000) : 1
 
 		fnrp=(pa.nr>10) ? round(Int,pa.nr/10) : 1
@@ -93,33 +92,33 @@
 		xscal=pa.cal.s[1:fact:end,1]
 		xdcal=getfield(pa.cal,fieldnames(pa.cal)[5])[1:fact*pa.nr:end]
 	        xdobs=getfield(pa.obs,fieldnames(pa.obs)[5])[1:fact*pa.nr:end]
-		xgcal=pa.cal.g
-		xgobs=pa.obs.g
-		layout := (2,2)
+		xgcal=pa.cal.g[:,1:fnrp:end][:]
+		xgobs=pa.obs.g[:,1:fnrp:end][:]
+		layout := (1,3)
 		@series begin        
 			subplot := 1
-#			aspect_ratio := :equal
+			aspect_ratio := :equal
 			seriestype := :scatter
 			title := "scatter s"
 			legend := false
-			xsobs, xscal
+			normalize(xsobs), normalize(xscal)
 		end
 		@series begin        
 			subplot := 2
-#			aspect_ratio := :equal
+			aspect_ratio := :equal
 			seriestype := :scatter
 			title := "scatter g"
 			legend := false
-			xgobs[:,1:fnrp:end], xgcal[:,1:fnrp:end]
+			normalize(xgobs), normalize(xgcal)
 		end
 
 		@series begin        
 			subplot := 3
-#			aspect_ratio := :equal
+			aspect_ratio := :equal
 			seriestype := :scatter
 			title := "scatter d"
 			legend := false
-			xdobs, xdcal
+			normalize(xdobs), normalize(xdcal)
 		end
 	end
 
@@ -160,26 +159,29 @@ end
 
 @userplot Plotobsmodel
 
-@recipe function f(p::Plotobsmodel; rvec=nothing, δt=1.0, attrib=:obs)
+@recipe function f(p::Plotobsmodel; rvec=nothing, δt=1.0)
 	pa=p.args[1]
 	layout := (3,1)
+
+	tg=collect(1:pa.ntg)*δt
+	td=collect(1:pa.nt)*δt
 
 	@series begin        
 		subplot := 1
 #		aspect_ratio := :auto
 		legend := false
 #		l := :plot
-		title := "\$g_0\$"
+		title := "\$g_i\$"
 		w := 1
-		pa.g
+		tg, pa.g
 	end
 	@series begin        
 		subplot := 2
 #		aspect_ratio := :auto
 		legend := false
-		title := "\$s_0\$"
+		title := "\$s\$"
 		w := 1
-		pa.s
+		td, pa.s
 	end
 	@series begin        
 		subplot := 3
@@ -187,7 +189,7 @@ end
 		legend := false
 		title := "\$d_i\$"
 		w := 1
-		pa.d
+		td, getfield(pa,fieldnames(pa)[6])
 	end
 end
 

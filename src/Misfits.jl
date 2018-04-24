@@ -20,18 +20,6 @@ function func_grad!(storage, x::AbstractVector{Float64},pa)
 
 end
 
-"""
-update calsave only when error in d is low
-"""
-function update_calsave!(pa)
-	f1=Misfits.error_squared_euclidean!(nothing, pa.optm.calsave.d, pa.optm.obs.d, nothing, norm_flag=true)
-	f2=Misfits.error_squared_euclidean!(nothing, pa.optm.cal.d, pa.optm.obs.d, nothing, norm_flag=true)
-	if(f2<f1)
-		copy!(pa.optm.calsave.d, pa.optm.cal.d)
-		copy!(pa.optm.calsave.g, pa.optm.cal.g)
-		copy!(pa.optm.calsave.s, pa.optm.cal.s)
-	end
-end
 
 # exponential-weighted norm for the green functions
 function func_grad_g_weights!(storage, x, pa)

@@ -46,7 +46,7 @@ function BD(ntg, nt, nr;
 	om=ObsModel(ntg, nt, nr, d=dobs, g=gobs, s=sobs)
 
 	# create models depending on mode
-	optm=OptimModel(2*ntg-1, 2*nt-1, binomial(nr, 2)+nr, fftwflag=fftwflag, 
+	optm=OptimModel(ntg, nt, nr, fftwflag=fftwflag, 
 	slags=[nt-1, 0], 
 	dlags=[nt-1, 0], 
 	glags=[ntg-1, 0], 
@@ -66,13 +66,14 @@ function BD(ntg, nt, nr;
 
 	if(mode == :bda)
 		(saobs===nothing) && error("need saobs")
-		sproject=DeConv.ForceAutoCorr(saobs, cal.np2)
+		sproject=DeConv.ForceAutoCorr(saobs, optm.cal.np2)
 	else
 		saobs=zeros(2*nt-1)
-		sproject=DeConv.ForceAutoCorr(saobs, cal.np2)
+		sproject=DeConv.ForceAutoCorr(saobs, optm.cal.np2)
 	end
 
 
+	calsave=deepcopy(optm.cal)
 	pa=BD(
 		om,		optm,		calsave,		gx,		sx,		snorm_flag,
 		snormmat,		dsnorm,		attrib_inv,		verbose,
@@ -88,9 +89,9 @@ function BD(ntg, nt, nr;
 	dobs=pa.om.d
 
 	# obs.g <-- gobs
-	replace!(pa.opt, gobs, :obs, :g )
+	replace!(pa.optm, gobs, :obs, :g )
 	# obs.s <-- sobs
-	replace!(pa.opt, sobs, :obs, :s )
+	replace!(pa.optm, sobs, :obs, :s )
 	# obs.d <-- dobs
 	copy!(pa.optm.obs.d, dobs) #  
 
@@ -120,7 +121,7 @@ end
 
 function x_to_model!(x, pa::BD)
 	if(pa.attrib_inv == :s)
-		for i in 1:pa.nt
+		for i in eachindex(pa.optm.cal.s)
 			# put same in all receivers
 			pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
 		end
@@ -197,13 +198,12 @@ end
 
 function bd!(pa::BD)
 
-	(pa.mode ∉ [:bd, :bda]) && error("only bd modes accepted")
 
 	update_func_grad!(pa,goptim=[:ls], gαvec=[1.]);
 	initialize!(pa)
 	update_all!(pa, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-8)
 
-	update_calsave!(pa)
+	update_calsave!(pa.optm, pa.calsave)
 	err!(pa)
 end
 
@@ -278,7 +278,7 @@ end
 
 function initialize!(pa::BD)
 	# starting random models
-	for i in 1:pa.nt
+	for i in eachindex(pa.optm.cal.s)
 		x=(pa.sx.precon[i]≠0.0) ? randn() : 0.0
 		pa.optm.cal.s[i]=x
 	end
@@ -304,7 +304,7 @@ print?
 give either cal or calsave?
 """
 function err!(pa::BD; cal=pa.optm.cal) 
-	xg_nodecon=hcat(Conv.xcorr(pa.om.d, lags=[pa.ntg-1, pa.ntg-1])...)
+	xg_nodecon=hcat(Conv.xcorr(pa.om.d, lags=[pa.optm.ntg-1, pa.optm.ntg-1])...)
 	xgobs=hcat(Conv.xcorr(pa.om.g)...) # compute xcorr with reference g
 	fs = Misfits.error_after_normalized_autocor(cal.s, pa.optm.obs.s)
 	xgcal=hcat(Conv.xcorr(cal.g)...) # compute xcorr with reference g
@@ -320,4 +320,19 @@ function err!(pa::BD; cal=pa.optm.cal)
 	println("==================")
 	show(pa.err)
 end 
+
+function update_g!(pa::BD, xg)
+	pa.attrib_inv=:g    
+	resg = update!(pa, xg,  pa.gx.func, pa.gx.grad!)
+	fg = Optim.minimum(resg)
+	return fg
+end
+
+function update_s!(pa::BD, xs)
+	pa.attrib_inv=:s    
+	ress = update!(pa, xs, pa.sx.func, pa.sx.grad!)
+	fs = Optim.minimum(ress)
+	return fs
+end
+
 

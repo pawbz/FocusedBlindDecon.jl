@@ -15,7 +15,7 @@ mutable struct OptimModel
 end
 	
 
-function OptimModel(ntg, nt, nr, fftwflag; slags=nothing, dlags=nothing, glags=nothing)
+function OptimModel(ntg, nt, nr; fftwflag=FFTW.MEASURE, slags=nothing, dlags=nothing, glags=nothing)
 
 	obs=Conv.Param(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], 
 	slags=slags,
@@ -88,9 +88,9 @@ mutable struct X
 	last_x::Vector{Float64}
 	func::Function
 	grad!::Function
-	precon::Array{Float64,2}
-	preconI::Array{Float64,2}
-	weights::Array{Float64,2}
+	precon::Vector{Float64}
+	preconI::Vector{Float64}
+	weights::Vector{Float64}
 end
 
 function X(n)

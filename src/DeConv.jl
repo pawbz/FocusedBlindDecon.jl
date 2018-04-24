@@ -187,7 +187,7 @@ function update_all!(pa; max_roundtrips=100, max_reroundtrips=10, ParamAM_func=n
 				    min_roundtrips=10,
 				    verbose=verbose,
 				    reinit_func=x->initialize!(pa),
-				    after_reroundtrip_func=x->(err!(pa); update_calsave!(pa);),
+				    after_reroundtrip_func=x->(err!(pa);),
 				    )
 	end
 
@@ -203,6 +203,19 @@ function update_all!(pa; max_roundtrips=100, max_reroundtrips=10, ParamAM_func=n
 	# print errors
 	err!(pa)
 	println(" ")
+end
+
+"""
+update calsave only when error in d is low
+"""
+function update_calsave!(optm::OptimModel, calsave)
+	f1=Misfits.error_squared_euclidean!(nothing, calsave.d, optm.obs.d, nothing, norm_flag=true)
+	f2=Misfits.error_squared_euclidean!(nothing, optm.cal.d, optm.obs.d, nothing, norm_flag=true)
+	if(f2<f1)
+		copy!(calsave.d, optm.cal.d)
+		copy!(calsave.g, optm.cal.g)
+		copy!(calsave.s, optm.cal.s)
+	end
 end
 
 
