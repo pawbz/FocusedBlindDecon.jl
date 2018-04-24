@@ -69,7 +69,7 @@ function ObsModel(ntg, nt, nr;
 	(g===nothing) && (s=zeros(ntg,nr))
 	if(d===nothing)
 		(iszero(g) || iszero(s)) && error("need gobs and sobs")
-		obstemp=Conv.Param(ssize=[nt], dsize=[nt,nra], gsize=[ntg,nra], 
+		obstemp=Conv.Param(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], 
 		     slags=[nt-1, 0])
 		copy!(obstemp.g, g)
 		copy!(obstemp.s, s)

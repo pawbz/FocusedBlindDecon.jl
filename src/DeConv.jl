@@ -16,10 +16,10 @@ using DSP.nextfastfft
 using ProgressMeter
 
 include("DataTypes.jl")
+include("Phase.jl")
 include("BD.jl")
 include("IBD.jl")
 include("Misfits.jl")
-include("Phase.jl")
 include("Doppler.jl")
 include("Deterministic.jl")
 

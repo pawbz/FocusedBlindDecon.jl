@@ -1,28 +1,19 @@
 
 
-@userplot Plot
+@userplot Plotoptimmodel
 
-@recipe function f(p::Plot; rvec=nothing, δt=1.0, attrib=:0)
+@recipe function f(p::Plotoptimmodel; rvec=nothing, δt=1.0, attrib=:obs)
 	pa=p.args[1]
 	(rvec===nothing) && (rvec=1:pa.nr)
 
 
-	# observed G
-	if(isdefined(pa, :gobs))
-		gobs=pa.gobs
-	elseif(isdefined(pa, :obs1))
-		gobs=pa.obs1.g
-	end
 
-	# observed S
-	if(isdefined(pa, :gobs))
-		gobs=pa.gobs
-	elseif(isdefined(pa, :obs1))
-		gobs=pa.obs1.g
-	end
+	g=getfield(pa,attrib).g
+	s=getfield(pa,attrib).s
+	d=getfield(pa,attrib).d
 
 
-
+	#=
 
 
 	gxobs=zeros(2*size(pa.obs.g,1)-1, size(pa.obs.g,2))
@@ -55,39 +46,11 @@
 #	dcal=pa.cal.d[1:fact:pa.nt*pa.nr]
 #	dobs=pa.obs.d[1:fact:pa.nt*pa.nr]
 
+=#
 
-	if(attrib==:0)
-		layout := (3,1)
-
-		@series begin        
-			subplot := 1
-	#		aspect_ratio := :auto
-			legend := false
-	#		l := :plot
-			title := "\$g_0\$"
-			w := 1
-			pa.gobs
-		end
-		@series begin        
-			subplot := 2
-	#		aspect_ratio := :auto
-			legend := false
-			title := "\$s_0\$"
-			w := 1
-			pa.sobs
-		end
-		@series begin        
-			subplot := 3
-	#		aspect_ratio := :auto
-			legend := false
-			title := "\$d_i\$"
-			w := 1
-			pa.dobs
-		end
-	end
 
 	if((attrib==:obs) || (attrib==:cal))
-		ns=length(pa.sobs)
+		ns=length(s)
 		fact=(ns>1000) ? round(Int,ns/1000) : 1
 		fnrp=(pa.nr>10) ? round(Int,pa.nr/10) : 1
 		layout := (3,1)
@@ -99,7 +62,7 @@
 	#		l := :plot
 			title := "\$g_0\$"
 			w := 1
-			getfield(pa,attrib).g[:,1:fnrp:end]
+			g[:,1:fnrp:end]
 		end
 		@series begin        
 			subplot := 2
@@ -107,7 +70,7 @@
 			legend := false
 			title := "\$s_0\$"
 			w := 1
-			getfield(pa,attrib).s[1:fact:end,1]
+			s[1:fact:end,1]
 		end
 		@series begin        
 			subplot := 3
@@ -193,4 +156,38 @@
 	end
 end
 
+
+
+@userplot Plotobsmodel
+
+@recipe function f(p::Plotobsmodel; rvec=nothing, δt=1.0, attrib=:obs)
+	pa=p.args[1]
+	layout := (3,1)
+
+	@series begin        
+		subplot := 1
+#		aspect_ratio := :auto
+		legend := false
+#		l := :plot
+		title := "\$g_0\$"
+		w := 1
+		pa.g
+	end
+	@series begin        
+		subplot := 2
+#		aspect_ratio := :auto
+		legend := false
+		title := "\$s_0\$"
+		w := 1
+		pa.s
+	end
+	@series begin        
+		subplot := 3
+#		aspect_ratio := :auto
+		legend := false
+		title := "\$d_i\$"
+		w := 1
+		pa.d
+	end
+end
 

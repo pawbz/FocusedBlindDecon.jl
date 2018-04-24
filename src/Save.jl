@@ -2,7 +2,7 @@
 """
 Save Param
 """
-function save(pa::Param, folder; tgridg=nothing, tgrid=nothing)
+function save(pa, folder; tgridg=nothing, tgrid=nothing)
 	!(isdir(folder)) && error("invalid directory")
 
 

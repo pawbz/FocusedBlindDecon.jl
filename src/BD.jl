@@ -61,8 +61,8 @@ function BD(ntg, nt, nr;
 
 	err=DataFrame(g=[], g_nodecon=[], s=[],d=[])
 
-	g_acorr=Conv.Param(gsize=[ntg,nra], dsize=[ntg,nra], ssize=[2*ntg-1,nra], slags=[ntg-1, ntg-1], fftwflag=fftwflag)
-	dg_acorr=zeros(2*ntg-1, nra)
+	g_acorr=Conv.Param(gsize=[ntg,nr], dsize=[ntg,nr], ssize=[2*ntg-1,nr], slags=[ntg-1, ntg-1], fftwflag=fftwflag)
+	dg_acorr=zeros(2*ntg-1, nr)
 
 	if(mode == :bda)
 		(saobs===nothing) && error("need saobs")
