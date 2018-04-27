@@ -15,8 +15,12 @@ mutable struct BD
 	# trying to penalize the energy in the correlations of g (not in practice)
 	g_acorr::Conv.Param{Float64,2,2,2}
 	dg_acorr::Array{Float64,2}
-	sproject::ForceAutoCorr
-	saobs::Vector{Float64} # auto correlation of the source (known for mode :bda)
+	sintensity::Intensity
+	sa0::Array{Array{Float64,2},1} # auto correlation of the source (known for mode :bda)
+	gij0::Array{Array{Float64,2},1}
+	spacse::Misfits.Param_CSE
+	gpacse::Misfits.Param_CSE
+	fourier_constraints_flag::Bool
 end
 
 
@@ -35,8 +39,10 @@ function BD(ntg, nt, nr;
 	       snorm_flag=false,
 	       fft_threads=false,
 	       fftwflag=FFTW.PATIENT,
+	       fourier_constraints_flag=false,
 	       dobs=nothing, gobs=nothing, sobs=nothing, verbose=false, attrib_inv=:g,
-	       saobs=nothing,
+	       sa0=nothing,
+	       gij0=nothing
 	       ) 
 
 	# use maximum threads for fft
@@ -64,22 +70,29 @@ function BD(ntg, nt, nr;
 	g_acorr=Conv.Param(gsize=[ntg,nr], dsize=[ntg,nr], ssize=[2*ntg-1,nr], slags=[ntg-1, ntg-1], fftwflag=fftwflag)
 	dg_acorr=zeros(2*ntg-1, nr)
 
-	if(mode == :bda)
-		(saobs===nothing) && error("need saobs")
-		sproject=DeConv.ForceAutoCorr(saobs, optm.cal.np2)
+	if(fourier_constraints_flag)
+		(sa0===nothing) && error("need sa0")
+		sintensity=DeConv.Intensity(sa0)
 	else
-		saobs=zeros(2*nt-1)
-		sproject=DeConv.ForceAutoCorr(saobs, optm.cal.np2)
+		sa0=zeros(2*nt-1)
+		sintensity=DeConv.Intensity(sa0)
 	end
 
+	sa00=[zeros(2*nt-1,1)]
+	gij00=[zeros(2*ntg-1,nr-ir+1) for ir in 1:nr]
+	Conv.Axmatrix!(sa0, sa00, 1)
+	Conv.Axmatrix!(gij0, gij00, 1)
+
+	spacse=Misfits.Param_CSE(nt,1,Ay=sa00)
+	gpacse=Misfits.Param_CSE(ntg,nr,Ay=gij00)
 
 	calsave=deepcopy(optm.cal)
 	pa=BD(
 		om,		optm,		calsave,		gx,		sx,		snorm_flag,
 		snormmat,		dsnorm,		attrib_inv,		verbose,
 		err,		# trying to penalize the energy in the correlations of g (not in practice),
-		g_acorr,		dg_acorr,		sproject,
-		saobs,)
+		g_acorr,		dg_acorr,		sintensity,
+		sa00,gij00,spacse,gpacse,fourier_constraints_flag)
 
 
 
@@ -95,7 +108,7 @@ function BD(ntg, nt, nr;
 	# obs.d <-- dobs
 	copy!(pa.optm.obs.d, dobs) #  
 
-	initialize!(pa)
+	initialize!(pa, gij0=nothing)
 	update_func_grad!(pa,goptim=goptim,soptim=soptim,gαvec=gαvec,sαvec=sαvec)
 
 	return pa
@@ -276,7 +289,7 @@ function Fadj!(pa::BD, x, storage, dcal)
 end
 
 
-function initialize!(pa::BD)
+function initialize!(pa::BD; gij0=nothing)
 	# starting random models
 	for i in eachindex(pa.optm.cal.s)
 		x=(pa.sx.precon[i]≠0.0) ? randn() : 0.0
@@ -286,14 +299,16 @@ function initialize!(pa::BD)
 		x=(pa.gx.precon[i]≠0.0) ? randn() : 0.0
 		pa.optm.cal.g[i]=x
 	end
+	if(pa.fourier_constraints_flag)
+		#apply_fourier_constraints!(pa)
+		phase_retrievel!(pa.optm.cal.g, pa.gpacse)
+		phase_retrievel!(pa.optm.cal.s, pa.spacse)
+	end
+
 end
 
 
 
-function project_s!(pa::BD)
-	copy!(pa.optm.ds, pa.optm.cal.s)
-	project!(pa.optm.cal.s, pa.optm.ds, pa.sproject)
-end
 
 
 
@@ -323,6 +338,9 @@ end
 
 function update_g!(pa::BD, xg)
 	pa.attrib_inv=:g    
+#	if(pa.fourier_constraints_flag)
+#		phase_retrievel!(pa.optm.cal.g, pa.gpacse)
+#	end
 	resg = update!(pa, xg,  pa.gx.func, pa.gx.grad!)
 	fg = Optim.minimum(resg)
 	return fg
@@ -330,9 +348,55 @@ end
 
 function update_s!(pa::BD, xs)
 	pa.attrib_inv=:s    
+#	if(pa.fourier_constraints_flag)
+#		phase_retrievel!(pa.optm.cal.s, pa.spacse)
+#	end
+	if(pa.fourier_constraints_flag)
+		"""
+		Generalized Gerchberg-Saxton algorithm
+		"""
+		max_roundtrips=1000000
+		max_reroundtrips=1
+		roundtrip_tol=1e-6
+		optim_tols=[1e-6, 1e-6]
+		verbose=false
+
+		ParamAM_func=x->Inversion.ParamAM(x, optim_tols=optim_tols, name="Generalized Gerchberg Saxton",
+				    roundtrip_tol=roundtrip_tol, max_roundtrips=max_roundtrips,
+				    max_reroundtrips=max_reroundtrips,
+				    min_roundtrips=10,
+				    verbose=verbose,
+				    )
+		# create alternating minimization parameters
+		function f1(x)
+			fs = apply_fourier_constraints!(pa)
+			return fs
+		end
+		function f2(x)
+			# err is error before applying support constraints
+			err=support_constraints!(pa.optm.cal.s, pa.sintensity)
+			# data error before updating s
+		#	Conv.mod!(pa.optm.cal, :d) # modify pa.optm.cal.d
+		#	err2 = Misfits.error_squared_euclidean!(nothing, pa.optm.cal.d, pa.optm.obs.d, nothing, norm_flag=true)
+	#		ress = update!(pa, xs, pa.sx.func, pa.sx.grad!)
+#			fs = Optim.minimum(ress)
+			return err
+		end
+		paam=ParamAM_func([f1, f2])
+
+		# do inversion
+		Inversion.go(paam)
+
+	end
 	ress = update!(pa, xs, pa.sx.func, pa.sx.grad!)
 	fs = Optim.minimum(ress)
 	return fs
+end
+
+function apply_fourier_constraints!(pa::BD)
+	copy!(pa.optm.ds, pa.optm.cal.s)
+	f = fourier_constraints!(pa.optm.ds, pa.sintensity)
+	return f
 end
 
 

@@ -54,15 +54,15 @@ function IBD(ntg, nt, nr;
 	sobs=hcat(Conv.xcorr(pa.om.s)...)
 
 	# obs.g <-- gobs
-	replace!(pa.opt, gobs, :obs, :g )
+	replace!(pa.optm, gobs, :obs, :g )
 	# obs.s <-- sobs
-	replace!(pa.opt, sobs, :obs, :s )
+	replace!(pa.optm, sobs, :obs, :s )
 	# obs.d <-- dobs
 	dobs=hcat(Conv.xcorr(pa.om.d)...) # do a cross-correlation 
 	copy!(pa.optm.obs.d, dobs) # overwrites the forward modelling done in previous steps  
 
 	initialize!(pa)
-	update_func_grad!(pa,goptim=goptim,soptim=soptim,gαvec=gαvec,sαvec=sαvec)
+	update_func_grad!(pa)
 
 	return pa
 	
@@ -72,7 +72,7 @@ end
 function model_to_x!(x, pa::IBD)
 	if(pa.attrib_inv == :s)
 		for i in eachindex(x)
-			x[i]=pa.optm.cal.s[i+pa.nt-1]*pa.sx.precon[i] # just take positive lags
+			x[i]=pa.optm.cal.s[i+pa.om.nt-1]*pa.sx.precon[i] # just take positive lags
 		end
 		x[1]=1.0 # zero lag will be fixed
 	else(pa.attrib_inv == :g)
@@ -86,12 +86,12 @@ end
 
 function x_to_model!(x, pa::IBD)
 	if(pa.attrib_inv == :s)
-		pa.optm.cal.s[pa.nt]=1.0 # fix zero lag
-		for i in 1:pa.nt-1
+		pa.optm.cal.s[pa.om.nt]=1.0 # fix zero lag
+		for i in 1:pa.om.nt-1
 			# put same in all receivers
-			pa.optm.cal.s[pa.nt+i]=x[i+1]*pa.sx.preconI[i+1]
+			pa.optm.cal.s[pa.om.nt+i]=x[i+1]*pa.sx.preconI[i+1]
 			# put same in negative lags
-			pa.optm.cal.s[pa.nt-i]=x[i+1]*pa.sx.preconI[i+1]
+			pa.optm.cal.s[pa.om.nt-i]=x[i+1]*pa.sx.preconI[i+1]
 		end
 	else(pa.attrib_inv == :g)
 		for i in eachindex(pa.optm.cal.g)
@@ -128,6 +128,15 @@ function add_focusing(pa::IBD, alpha=Inf)
 end
 
 
+function ibd!(pa::IBD)
+
+	initialize!(pa)
+	update_all!(pa, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-8)
+
+	err!(pa)
+end
+
+
 
 """
 Focused Blind Deconvolution
@@ -157,7 +166,7 @@ function initialize!(pa::IBD)
 	for i in eachindex(pa.optm.cal.s)
 		pa.optm.cal.s[i]=0.0 # +ve lags and -ve lags
 	end
-	pa.optm.cal.s[pa.nt]=1.0 # fix zero lag to one
+	pa.optm.cal.s[pa.om.nt]=1.0 # fix zero lag to one
 	for i in eachindex(pa.optm.cal.g)
 		x=(pa.gx.precon[i]≠0.0) ? randn() : 0.0
 		pa.optm.cal.g[i]=x
@@ -200,9 +209,9 @@ function Fadj!(pa, x, storage, dcal)
 	if(pa.attrib_inv == :s)
 		Conv.mod!(pa.optm.cal, :s, d=dcal, s=pa.optm.ds)
 		# stacking over +ve and -ve lags
-		for j in 2:pa.nt
-			storage[j] += pa.optm.ds[pa.nt-j+1] # -ve lags
-			storage[j] += pa.optm.ds[pa.nt+j-1] # +ve lags
+		for j in 2:pa.om.nt
+			storage[j] += pa.optm.ds[pa.om.nt-j+1] # -ve lags
+			storage[j] += pa.optm.ds[pa.om.nt+j-1] # +ve lags
 		end
 
 		# apply precon
