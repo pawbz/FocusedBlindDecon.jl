@@ -29,7 +29,7 @@ end
 Constructor for the blind deconvolution problem
 """
 function BD(ntg, nt, nr; 
-	       gprecon=nothing,
+	    gprecon_attrib=:none,
 	       gweights=nothing,
 	       goptim=nothing,
 	       gαvec=nothing,
@@ -108,7 +108,10 @@ function BD(ntg, nt, nr;
 	# obs.d <-- dobs
 	copy!(pa.optm.obs.d, dobs) #  
 
-	initialize!(pa, gij0=nothing)
+
+	add_precons!(pa, pa.om.g, attrib=gprecon_attrib)
+
+	initialize!(pa)
 	update_func_grad!(pa,goptim=goptim,soptim=soptim,gαvec=gαvec,sαvec=sαvec)
 
 	return pa
@@ -158,7 +161,7 @@ Create preconditioners using the observed Green Functions.
 * `max_tfrac_gprecon` : maximum length of precon windows on g
 """
 function add_precons!(pa::BD, gobs; αexp=0.0, cflag=true,
-		       max_tfrac_gprecon=1.0)
+		       max_tfrac_gprecon=1.0, attrib=:focus)
 	
 	ntg=pa.om.ntg
 	nt=pa.om.nt
@@ -169,36 +172,41 @@ function add_precons!(pa::BD, gobs; αexp=0.0, cflag=true,
 	sprecon=ones(nt)
 	gprecon=ones(ntg, nr); 
 	gweights=ones(ntg, nr); 
-	minindz=ntg
-	gweights=ones(ntg, nr)
-	for ir in 1:nr
-		g=normalize(view(gobs,:,ir))
-		indz=findfirst(x->abs(x)>1e-6, g)
-	#	if(indz > 1) 
-	#		indz -= 1 # window one sample less than actual
-	#	end
-		if(!cflag && indz≠0)
-			indz=1
-		end
-		if(indz≠0)
-			for i in 1:indz-1
-				gprecon[i,ir]=0.0
-				gweights[i,ir]=0.0
+	if(attrib==:windows)
+		for ir in 1:nr
+			g=normalize(view(gobs,:,ir))
+			indz=findfirst(x->abs(x)>1e-6, g)
+		#	if(indz > 1) 
+		#		indz -= 1 # window one sample less than actual
+		#	end
+			if(!cflag && indz≠0)
+				indz=1
 			end
-			for i in indz:indz+ntgprecon
-				if(i≤ntg)
-					gweights[i,ir]=exp(αexp*(i-indz-1)/ntg)  # exponential weights
-					gprecon[i,ir]=exp(αexp*(i-indz-1)/ntg)  # exponential weights
+			if(indz≠0)
+				for i in 1:indz-1
+					gprecon[i,ir]=0.0
+					gweights[i,ir]=0.0
 				end
+				for i in indz:indz+ntgprecon
+					if(i≤ntg)
+						gweights[i,ir]=exp(αexp*(i-indz-1)/ntg)  # exponential weights
+						gprecon[i,ir]=exp(αexp*(i-indz-1)/ntg)  # exponential weights
+					end
+				end
+				for i in indz+ntgprecon+1:ntg
+					gprecon[i,ir]=0.0
+					gweights[i,ir]=0.0
+				end
+			else
+				gprecon[:,ir]=0.0
+				gweights[:,ir]=0.0
 			end
-			for i in indz+ntgprecon+1:ntg
-				gprecon[i,ir]=0.0
-				gweights[i,ir]=0.0
-			end
-		else
-			gprecon[:,ir]=0.0
-			gweights[:,ir]=0.0
 		end
+	elseif(attrib==:focus)
+		ir0=indmin([findfirst(x->abs(x)>1e-6, vec(gobs[:,ir])) for ir in 1:nr])
+		# first receiver is a spike
+		gprecon[2:end,ir0]=0.0
+
 	end
 
 	add_gprecon!(pa, gprecon)
@@ -289,7 +297,7 @@ function Fadj!(pa::BD, x, storage, dcal)
 end
 
 
-function initialize!(pa::BD; gij0=nothing)
+function initialize!(pa::BD)
 	# starting random models
 	for i in eachindex(pa.optm.cal.s)
 		x=(pa.sx.precon[i]≠0.0) ? randn() : 0.0
@@ -301,6 +309,8 @@ function initialize!(pa::BD; gij0=nothing)
 	end
 	if(pa.fourier_constraints_flag)
 		#apply_fourier_constraints!(pa)
+		phase_retrievel!(pa.optm.cal.g, pa.gpacse, pa.gx.precon)
+		remove_gprecon!(pa, including_zeros=true)
 		phase_retrievel!(pa.optm.cal.g, pa.gpacse)
 		phase_retrievel!(pa.optm.cal.s, pa.spacse)
 	end

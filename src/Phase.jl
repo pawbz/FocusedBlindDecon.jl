@@ -125,21 +125,39 @@ function phase_retrievel(Ay, nt, nr,
 end
 
 function phase_retrievel!(y, pacse::Misfits.Param_CSE, 
+			  w=ones(y),
 		 store_trace::Bool=false, 
 		 extended_trace::Bool=false, 
-	     f_tol::Float64=1e-8, g_tol::Float64=1e-30, x_tol::Float64=1e-30)
+	     f_tol::Float64=1e-10, g_tol::Float64=1e-30, x_tol::Float64=1e-30)
 
 
 	f=function f(x)
 		x=reshape(x,nt,nr)
+		for i in eachindex(x)
+			if(w[i]≠0.0)
+				x[i] = x[i]/w[i]
+			end
+		end
 		J=Misfits.error_corr_squared_euclidean!(nothing,x,pacse)
 		return J
 	end
 	g! =function g!(storage, x) 
 		x=reshape(x,nt,nr)
+		for i in eachindex(x)
+			if(w[i]≠0.0)
+				x[i] = x[i]/w[i]
+			end
+		end
 		gg=zeros(nt,nr)
 		Misfits.error_corr_squared_euclidean!(gg, x, pacse)
 		copy!(storage,gg)
+		for i in eachindex(x)
+			if(w[i]≠0.0)
+				storage[i] = storage[i]/w[i]
+			else
+				storage[i]=0.0
+			end
+		end
 	end
 
 	nt=size(y,1)
@@ -154,10 +172,11 @@ function phase_retrievel!(y, pacse::Misfits.Param_CSE,
 	Unbounded LBFGS inversion, only for testing
 	"""
 	res = optimize(f, g!, x, 
-		ConjugateGradient(),
+		#ConjugateGradient(),
+		BFGS(),
 		       Optim.Options(g_tol = g_tol, f_tol=f_tol, x_tol=x_tol,
-		       iterations = 1000, store_trace = store_trace,
-		       extended_trace=extended_trace, show_trace = false))
+		       iterations = 5000, store_trace = store_trace,
+		       extended_trace=extended_trace, show_trace = true))
 	#println(res)
 
 	for i in eachindex(y)
