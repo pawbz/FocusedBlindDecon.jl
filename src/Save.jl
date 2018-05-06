@@ -2,107 +2,146 @@
 """
 Save Param
 """
-function save(pa, folder; tgridg=nothing, tgrid=nothing)
+function save(pa::BD, folder; tgridg=nothing, tgrid=nothing)
 	!(isdir(folder)) && error("invalid directory")
 
 
-	(tgridg===nothing) && (tgridg = Grid.M1D(0.0, (pa.ntg-1)*1.0, pa.ntg))
-
-	# save original g
-	file=joinpath(folder, "gobs.csv")
-	CSV.write(file,DataFrame(hcat(tgridg.x, pa.om.g)))
-	# save for imagesc
-	file=joinpath(folder, "imgobs.csv")
-	CSV.write(file,DataFrame(hcat(repeat(tgridg.x,outer=pa.nra),
-				      repeat(1:pa.nra,inner=pa.ntg),vec(pa.om.g))),)
-	# file=joinpath(folder, "gcal.csv")
-	# CSV.write(file,DataFrame(hcat(tgridg.x, pa.optm.calsave.g)))
-
-	# compute cross-correlations of g
-	xtgridg=Grid.M1D_xcorr(tgridg); # grid
-	if(pa.mode ∈ [:bd, :bda])
-		xgobs=hcat(Conv.xcorr(pa.om.g)...)
-	elseif(pa.mode==:ibd)
-		xgobs=pa.optm.obs.g
-	end
-	file=joinpath(folder, "xgobs.csv")
-	CSV.write(file,DataFrame(hcat(xtgridg.x, xgobs)))
-
-	file=joinpath(folder, "imxgobs.csv")
-	CSV.write(file,DataFrame(hcat(repeat(xtgridg.x,outer=pa.nra),
-				      repeat(1:pa.nra,inner=xtgridg.nx),vec(xgobs[:,1:pa.nra]))),)
-	if(pa.mode ∈ [:bd, :bda])
-		xgcal=hcat(Conv.xcorr(pa.optm.cal.g)...)
-	elseif(pa.mode==:ibd)
-		xgcal=pa.optm.calsave.g
-	end
-	file=joinpath(folder, "xgcal.csv")
-	CSV.write(file,DataFrame(hcat(xtgridg.x,xgcal)))
-	file=joinpath(folder, "imxgcal.csv")
-	CSV.write(file,DataFrame(hcat(repeat(xtgridg.x,outer=pa.nra),
-				      repeat(1:pa.nra,inner=xtgridg.nx),vec(xgcal[:,1:pa.nra]))),)
-
-	# compute cross-correlations without blind Decon
-	xg_nodecon=hcat(Conv.xcorr(pa.om.d, lags=[pa.ntg-1, pa.ntg-1])...)
-	file=joinpath(folder, "xg_nodecon.csv")
-	CSV.write(file,DataFrame(hcat(xtgridg.x,xg_nodecon)))
-
-	file=joinpath(folder, "imxg_nodecon.csv")
-	CSV.write(file,DataFrame(hcat(repeat(xtgridg.x,outer=pa.nra),
-				      repeat(1:pa.nra,inner=xtgridg.nx),vec(xg_nodecon[:,1:pa.nra]))),)
-
-	# compute cross-correlation of source selet
-	xsobs=hcat(Conv.xcorr(pa.om.s, lags=[pa.ntg-1, pa.ntg-1])...)
-	file=joinpath(folder, "xsobs.csv")
-	CSV.write(file,DataFrame(hcat(xtgridg.x,xsobs)))
-
-	# cross-plot of g
-	file=joinpath(folder, "gcross.csv")
-	CSV.write(file,DataFrame( hcat(vec(xgobs), vec(xgcal))))
-	file=joinpath(folder, "gcross_nodecon.csv")
-	CSV.write(file,DataFrame( hcat(vec(xgobs), vec(xg_nodecon))))
-
-
-	# compute autocorrelations of source
-	if(pa.mode ∈ [:bd, :bda])
-		xsobs=autocor(pa.optm.obs.s[:,1], 1:pa.nt-1, demean=true)
-		xscal=autocor(pa.optm.calsave.s[:,1], 1:pa.nt-1, demean=true)
-	elseif(pa.mode==:ibd)
-		xsobs=pa.optm.obs.s[:,1]
-		xscal=pa.optm.calsave.s[:,1]
-	end
-	smat=hcat(vec(xsobs), vec(xscal))
-	scale!(smat, inv(maximum(abs, smat)))
-	
-	# resample s, final sample should not exceed 1000
-	ns=length(xsobs)
-	fact=(ns>1000) ? round(Int,ns/1000) : 1
-	xsobs=xsobs[1:fact:ns] # resample
-	xscal=xscal[1:fact:ns] # resample
-
-	# x plots of s
-	file=joinpath(folder, "scross.csv")
-	CSV.write(file,DataFrame(smat))
-
-	# x plots of data
-	dcal=pa.optm.calsave.d
-	dobs=pa.optm.obs.d
-	nd=length(dcal);
-	fact=(nd>1000) ? round(Int,nd/1000) : 1
-	dcal=dcal[1:fact:nd]
-	dobs=dobs[1:fact:nd]
-	datmat=hcat(vec(dcal), vec(dobs))
-	scale!(datmat, inv(maximum(abs, datmat)))
-
-	file=joinpath(folder, "datcross.csv")
-	CSV.write(file,DataFrame( datmat))
+	save(pa.om, folder, tgridg=tgridg, tgrid=tgrid)
+	save(pa.optm, folder, tgridg=tgridg, tgrid=tgrid)
+	savex(pa.optm, folder, tgridg=tgridg, tgrid=tgrid)
 
 	# finally save err
-	err!(pa, cal=pa.optm.calsave) # compute err in calsave 
+	err!(pa) # compute err in cal 
+	file=joinpath(folder, "err.csv")
+	CSV.write(file, pa.err)
+end
+
+
+"""
+Save Param
+"""
+function save(pa::IBD, folder; tgridg=nothing, tgrid=nothing)
+	!(isdir(folder)) && error("invalid directory")
+
+	save(pa.om, folder, tgridg=tgridg, tgrid=tgrid)
+	save(pa.optm, folder, tgridg=tgridg, tgrid=tgrid)
+
+	# finally save err
+	err!(pa) # compute err in cal 
 	file=joinpath(folder, "err.csv")
 	CSV.write(file, pa.err)
 end
 
 
 
+function save(pa::ObsModel, folder; tgridg=nothing, tgrid=nothing)
+	!(isdir(folder)) && error("invalid directory")
+
+
+	(tgridg===nothing) && (tgridg = Grid.M1D(0.0, (pa.ntg-1)*1.0, pa.ntg))
+	(tgrid===nothing) && (tgrid = Grid.M1D(0.0, (pa.nt-1)*1.0, pa.nt))
+
+	# save original g
+	file=joinpath(folder, "gobs.csv")
+	CSV.write(file,DataFrame(hcat(tgridg.x, pa.g)))
+
+	# save g for imagesc plots in TikZ
+	file=joinpath(folder, "imgobs.csv")
+	CSV.write(file,DataFrame(hcat(repeat(tgridg.x,outer=pa.nr),repeat(1:pa.nr,inner=pa.ntg),vec(pa.g))),)
+
+	# save original s
+	file=joinpath(folder, "sobs.csv")
+	CSV.write(file,DataFrame(hcat(tgrid.x,pa.s)))
+
+	# save data
+	file=joinpath(folder, "dobs.csv")
+	CSV.write(file,DataFrame(hcat(tgrid.x, pa.d)))
+end
+
+function save(pa::OptimModel, folder; tgridg=nothing, tgrid=nothing)
+	!(isdir(folder)) && error("invalid directory")
+
+	(tgridg===nothing) && (tgridg = Grid.M1D(0.0, (pa.ntg-1)*1.0, pa.ntg))
+	(tgrid===nothing) && (tgrid = Grid.M1D(0.0, (pa.nt-1)*1.0, pa.nt))
+
+	save_obscal(pa.obs.g, pa.cal.g, tgridg.x, "goptm", folder)
+	save_obscal(pa.obs.d, pa.cal.d, tgrid.x, "doptm", folder)
+	save_obscal(pa.obs.s, pa.cal.s, tgrid.x, "soptm", folder)
+
+	save_cross(pa.obs.d,pa.cal.d, "doptm", folder)
+	save_cross(pa.obs.g,pa.cal.g, "goptm", folder)
+	save_cross(pa.obs.s,pa.cal.s, "soptm", folder)
+
+end
+
+	
+function savex(pa::OptimModel, folder; tgridg=nothing, tgrid=nothing)
+	!(isdir(folder)) && error("invalid directory")
+
+	(tgridg===nothing) && (tgridg = Grid.M1D(0.0, (pa.ntg-1)*1.0, pa.ntg))
+	(tgrid===nothing) && (tgrid = Grid.M1D(0.0, (pa.nt-1)*1.0, pa.nt))
+
+	xtgridg=Grid.M1D_xcorr(tgridg); 
+	xtgrid=Grid.M1D_xcorr(tgrid)
+
+	xgobs=Conv.xcorr(pa.obs.g)[1]
+	xgcal=Conv.xcorr(pa.cal.g)[1]
+
+	save_obscal(xgobs, xgcal, xtgridg.x, "xg", folder)
+
+	# compute cross-correlations without blind Decon
+	xdobs=Conv.xcorr(pa.obs.d,Conv.P_xcorr(pa.nt, pa.nr, cglags=[pa.ntg-1, pa.ntg-1]))[1]
+	xdcal=Conv.xcorr(pa.cal.d,Conv.P_xcorr(pa.nt, pa.nr, cglags=[pa.ntg-1, pa.ntg-1]))[1]
+	xsobs=(Conv.xcorr(pa.obs.s,Conv.P_xcorr(pa.nt, 1, cglags=[pa.ntg-1, pa.ntg-1]))[1])
+	xscal=(Conv.xcorr(pa.cal.s,Conv.P_xcorr(pa.nt, 1, cglags=[pa.ntg-1, pa.ntg-1]))[1])
+
+	save_obscal(xdobs, xdcal, xtgridg.x, "xdat", folder)
+	save_obscal(xsobs, xscal, xtgridg.x, "xs", folder)
+
+
+	save_cross(xdobs,xdcal, "xdat", folder)
+	save_cross(xsobs,xscal, "xs", folder)
+	save_cross(xgobs,xgcal, "xg", folder)
+end
+
+
+
+function save_cross(a,b, name, folder; num=1000)
+	(length(a) ≠ length(b)) && error("size mismatch")
+
+	# x plots of data
+	nd=length(b);
+	fact=(nd>num) ? round(Int,nd/num) : 1
+	b=b[1:fact:nd]
+	a=a[1:fact:nd]
+	datmat=hcat(vec(b), vec(a))
+	scale!(datmat, inv(maximum(abs, datmat)))
+
+	file=joinpath(folder, string(name, "cross.csv"))
+	CSV.write(file,DataFrame( datmat))
+end
+
+
+
+function save_obscal(a,b, x, name, folder)
+	(size(a) ≠ size(b)) && error("size mismatch")
+	nr=size(a,2)
+	nt=size(a,1)
+
+	# save obs
+	file=joinpath(folder, string(name,"obs.csv"))
+	CSV.write(file,DataFrame(hcat(x, a)))
+	# save cal
+	file=joinpath(folder, string(name, "cal.csv"))
+	CSV.write(file,DataFrame(hcat(x, b)))
+
+
+	# save g for imagesc plots in TikZ
+	file=joinpath(folder, string("im", name, "obs.csv"))
+	CSV.write(file,DataFrame(hcat(repeat(x,outer=nr),repeat(1:nr,inner=nt),vec(a))))
+
+	file=joinpath(folder, string("im", name, "cal.csv"))
+	CSV.write(file,DataFrame(hcat(repeat(x,outer=nr),repeat(1:nr,inner=nt),vec(b))))
+
+end
 

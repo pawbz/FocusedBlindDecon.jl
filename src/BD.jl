@@ -3,7 +3,7 @@
 mutable struct BD
 	om::ObsModel
 	optm::OptimModel
-	calsave::Conv.Param{Float64,2,2,1} # save the best result
+	calsave::Conv.P_conv{Float64,2,2,1} # save the best result
 	gx::X
 	sx::X
 	snorm_flag::Bool 	# restrict s along a unit circle during optimization
@@ -13,13 +13,13 @@ mutable struct BD
 	verbose::Bool
 	err::DataFrames.DataFrame
 	# trying to penalize the energy in the correlations of g (not in practice)
-	g_acorr::Conv.Param{Float64,2,2,2}
+	g_acorr::Conv.P_conv{Float64,2,2,2}
 	dg_acorr::Array{Float64,2}
 	sintensity::Intensity
 	sa0::Array{Array{Float64,2},1} # auto correlation of the source (known for mode :bda)
 	gij0::Array{Array{Float64,2},1}
-	spacse::Misfits.Param_CSE
-	gpacse::Misfits.Param_CSE
+	spacse::Conv.P_misfit_xcorr
+	gpacse::Conv.P_misfit_xcorr
 	fourier_constraints_flag::Bool
 end
 
@@ -67,7 +67,7 @@ function BD(ntg, nt, nr;
 
 	err=DataFrame(g=[], g_nodecon=[], s=[],d=[])
 
-	g_acorr=Conv.Param(gsize=[ntg,nr], dsize=[ntg,nr], ssize=[2*ntg-1,nr], slags=[ntg-1, ntg-1], fftwflag=fftwflag)
+	g_acorr=Conv.P_conv(gsize=[ntg,nr], dsize=[ntg,nr], ssize=[2*ntg-1,nr], slags=[ntg-1, ntg-1], fftwflag=fftwflag)
 	dg_acorr=zeros(2*ntg-1, nr)
 
 	if(fourier_constraints_flag)
@@ -80,11 +80,13 @@ function BD(ntg, nt, nr;
 
 	sa00=[zeros(2*nt-1,1)]
 	gij00=[zeros(2*ntg-1,nr-ir+1) for ir in 1:nr]
-	Conv.Axmatrix!(sa0, sa00, 1)
-	Conv.Axmatrix!(gij0, gij00, 1)
+	if(fourier_constraints_flag)
+		Conv.cgmat!(sa0, sa00, 1)
+		Conv.cgmat!(gij0, gij00, 1)
+	end
 
-	spacse=Misfits.Param_CSE(nt,1,Ay=sa00)
-	gpacse=Misfits.Param_CSE(ntg,nr,Ay=gij00)
+	spacse=Conv.P_misfit_xcorr(nt,1,cy=sa00)
+	gpacse=Conv.P_misfit_xcorr(ntg,nr,cy=gij00)
 
 	calsave=deepcopy(optm.cal)
 	pa=BD(
@@ -203,7 +205,7 @@ function add_precons!(pa::BD, gobs; αexp=0.0, cflag=true,
 			end
 		end
 	elseif(attrib==:focus)
-		ir0=indmin([findfirst(x->abs(x)>1e-6, vec(gobs[:,ir])) for ir in 1:nr])
+		ir0=inear(gobs)
 		# first receiver is a spike
 		gprecon[2:end,ir0]=0.0
 
@@ -214,6 +216,14 @@ function add_precons!(pa::BD, gobs; αexp=0.0, cflag=true,
 	add_sprecon!(pa, sprecon)
  
 	return pa
+end
+
+
+"return index of closest receiver"
+function inear(gobs, threshold=1e-6)
+	nr=size(gobs,2)
+	ir0=indmin([findfirst(x->abs(x)>threshold, vec(gobs[:,ir])) for ir in 1:nr])
+	return ir0
 end
 
 
@@ -329,7 +339,7 @@ print?
 give either cal or calsave?
 """
 function err!(pa::BD; cal=pa.optm.cal) 
-	xg_nodecon=hcat(Conv.xcorr(pa.om.d, lags=[pa.optm.ntg-1, pa.optm.ntg-1])...)
+	xg_nodecon=hcat(Conv.xcorr(pa.om.d,Conv.P_xcorr(pa.om.nt, pa.om.nr, cglags=[pa.optm.ntg-1, pa.optm.ntg-1]))...)
 	xgobs=hcat(Conv.xcorr(pa.om.g)...) # compute xcorr with reference g
 	fs = Misfits.error_after_normalized_autocor(cal.s, pa.optm.obs.s)
 	xgcal=hcat(Conv.xcorr(cal.g)...) # compute xcorr with reference g

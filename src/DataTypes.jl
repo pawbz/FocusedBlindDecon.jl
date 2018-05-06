@@ -7,8 +7,8 @@ mutable struct OptimModel
 	ntg::Int64
 	nt::Int64
 	nr::Int64
-	obs::Conv.Param{Float64,2,2,1} # observed convolutional model
-	cal::Conv.Param{Float64,2,2,1} # calculated convolutional model
+	obs::Conv.P_conv{Float64,2,2,1} # observed convolutional model
+	cal::Conv.P_conv{Float64,2,2,1} # calculated convolutional model
 	dg::Array{Float64,2} # store gradients
 	ds::Vector{Float64} # store gradients
 	ddcal::Array{Float64,2}
@@ -17,7 +17,7 @@ end
 
 function OptimModel(ntg, nt, nr; fftwflag=FFTW.MEASURE, slags=nothing, dlags=nothing, glags=nothing)
 
-	obs=Conv.Param(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], 
+	obs=Conv.P_conv(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], 
 	slags=slags,
 	glags=glags,
 	dlags=dlags,
@@ -69,7 +69,7 @@ function ObsModel(ntg, nt, nr;
 	(g===nothing) && (s=zeros(ntg,nr))
 	if(d===nothing)
 		(iszero(g) || iszero(s)) && error("need gobs and sobs")
-		obstemp=Conv.Param(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], 
+		obstemp=Conv.P_conv(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], 
 		     slags=[nt-1, 0])
 		copy!(obstemp.g, g)
 		copy!(obstemp.s, s)

@@ -101,11 +101,13 @@ function x_to_model!(x, pa::IBD)
 	return pa
 end
 
-function add_focusing(pa::IBD, alpha=Inf)
+function add_focusing!(pa::IBD, α=Inf)
 	(α≠Inf) && error("focusing only enabled for infinte alpha")
 
-	gprecon=ones(size(pa.gx.precon)); # put ones everywhere for precon
-	gweights=zeros(size(pa.gx.weights)); 
+	nr=pa.om.nr
+	ntg=pa.om.ntg
+	gprecon=ones(pa.optm.ntg, pa.optm.nr); 
+	gweights=ones(pa.optm.ntg, pa.optm.nr); 
 
 	irr=1  # auto correlation index
 	for ir in 1:nr
@@ -141,9 +143,7 @@ end
 """
 Focused Blind Deconvolution
 """
-function fbd!(pa; verbose=true)
-
-	(pa.mode≠:ibd) && error("only ibd mode accepted")
+function fbd!(pa::IBD; verbose=true)
 
 	# set α=∞ 
 	add_focusing!(pa)
@@ -264,7 +264,7 @@ function err!(pa::IBD; cal=pa.optm.cal)
 	fs = Misfits.error_squared_euclidean!(nothing, cal.s, pa.optm.obs.s, nothing, norm_flag=true)
 	f = Misfits.error_squared_euclidean!(nothing, cal.d, pa.optm.obs.d, nothing, norm_flag=true)
 
-	xg_nodecon=hcat(Conv.xcorr(pa.om.d, lags=[pa.om.ntg-1, pa.om.ntg-1])...)
+	xg_nodecon=hcat(Conv.xcorr(pa.om.d,Conv.P_xcorr(pa.om.nt, pa.om.nr, cglags=[pa.om.ntg-1, pa.om.ntg-1]))...)
 	xgobs=hcat(Conv.xcorr(pa.om.g)...) # compute xcorr with reference g
 	fg_nodecon = Misfits.error_squared_euclidean!(nothing, xg_nodecon, xgobs, nothing, norm_flag=true)
 
