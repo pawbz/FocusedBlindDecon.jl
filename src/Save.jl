@@ -1,6 +1,8 @@
 
 """
-Save Param
+Save BD
+* `tgridg` : 1D Grid for Green's functions
+* `tgrid` : 1D Grid for the data
 """
 function save(pa::BD, folder; tgridg=nothing, tgrid=nothing)
 	!(isdir(folder)) && error("invalid directory")
@@ -18,13 +20,31 @@ end
 
 
 """
-Save Param
+Save IBD
 """
 function save(pa::IBD, folder; tgridg=nothing, tgrid=nothing)
 	!(isdir(folder)) && error("invalid directory")
 
 	save(pa.om, folder, tgridg=tgridg, tgrid=tgrid)
+	save(pa.optm, folder, tgridg=Grid.M1D_xcorr(tgridg), tgrid=tgrid)
+
+	# finally save err
+	err!(pa) # compute err in cal 
+	file=joinpath(folder, "err.csv")
+	CSV.write(file, pa.err)
+end
+
+
+function save(pa::FPR, folder; tgridg=nothing, tgrid=nothing)
+	!(isdir(folder)) && error("invalid directory")
+
+	# save observed vs modelled data
+	save_cross(hcat(pa.p_misfit_xcorr.cy...),hcat(pa.p_misfit_xcorr.pxcorr.cg...), 
+	    "dfpr", folder)
+
+	save(pa.om, folder, tgridg=tgridg, tgrid=tgrid)
 	save(pa.optm, folder, tgridg=tgridg, tgrid=tgrid)
+	savex(pa.optm, folder, tgridg=tgridg, tgrid=tgrid)
 
 	# finally save err
 	err!(pa) # compute err in cal 

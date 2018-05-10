@@ -1,5 +1,5 @@
 # blind deconvolution
-__precompile__()
+#__precompile__()
 
 module DeConv
 using Inversion
@@ -13,7 +13,7 @@ using StatsBase
 using JLD
 using CSV
 using DSP.nextfastfft
-using ProgressMeter
+#using ProgressMeter
 
 include("DataTypes.jl")
 include("FPR.jl")
