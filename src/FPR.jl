@@ -85,8 +85,9 @@ function update!(g::AbstractMatrix{Float64}, w::AbstractMatrix{Float64}, pa::FPR
 		ConjugateGradient(),
 		#BFGS(),
 		       Optim.Options(g_tol = g_tol, f_tol=f_tol, x_tol=x_tol,
-		       iterations = 5000, store_trace = store_trace,
-		       extended_trace=extended_trace, show_trace = false))
+		       iterations = 20000, store_trace = store_trace,
+		       show_every=250,
+		       extended_trace=extended_trace, show_trace=true))
 	println(res)
 	flush(STDOUT)
 
@@ -111,7 +112,7 @@ function fpr!(g::AbstractMatrix{Float64}, inear::Int, pa::FPR; precon=:focus)
 			if(w1[i]==0.0)
 				g[i]=0.0
 			else
-				g[1]=1.0
+				g[i]=randn()
 			end
 		end
 		update!(g,w1,pa, focus_flag=true);

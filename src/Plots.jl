@@ -193,3 +193,73 @@ end
 	end
 end
 
+
+@userplot Plotprmodel
+
+@recipe function f(p::Plotprmodel; gobs=nothing, rvec=nothing, δt=1.0, attrib=:obs)
+	pa=p.args[1]
+	nr=size(pa.g,2)
+	ntg=size(pa.g,1)
+	(rvec===nothing) && (rvec=1:nr)
+
+	layout := (3,2)
+	g1=pa.g
+	if(gobs===nothing)
+		gobs=zeros(g1)
+	end
+	dd0=hcat(pa.p_misfit_xcorr.cy...)
+	dd=hcat(pa.p_misfit_xcorr.pxcorr.cg...)
+
+	nr1=size(dd,2)
+	ns=size(dd,1)
+	fact=(ns>1000) ? round(Int,ns/1000) : 1
+	fnrp=(nr1>10) ? round(Int,nr1/10) : 1
+
+	@series begin        
+		subplot := 1
+#		aspect_ratio := :auto
+		legend := false
+#		l := :plot
+		title := string("\$g_i\$ ", "obs")
+		w := 1
+		gobs
+	end
+	@series begin        
+		subplot := 2
+#		aspect_ratio := :auto
+		legend := false
+#		l := :plot
+		title := string("\$g_i\$ ", "cal")
+		w := 1
+		g1
+	end
+	@series begin        
+		subplot := 3
+#		aspect_ratio := :auto
+		legend := false
+		title := string("\$d_i\$ ", "obs")
+		w := 1
+		dd0[1:fact:end,1:fnrp:end]
+	end
+	@series begin        
+		subplot := 4
+#		aspect_ratio := :auto
+		legend := false
+		title := string("\$d_i\$ ", "cal")
+		w := 1
+		dd[1:fact:end,1:fnrp:end]
+	end
+
+	xdcal=dd[1:fact*nr1:end]
+	xdobs=dd0[1:fact*nr1:end]
+	@series begin        
+		subplot := 5
+		aspect_ratio := :equal
+		seriestype := :scatter
+		title := "scatter d"
+		legend := false
+		normalize(xdobs), normalize(xdcal)
+	end
+end
+
+
