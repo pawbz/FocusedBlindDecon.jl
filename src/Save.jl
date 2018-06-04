@@ -25,8 +25,11 @@ Save IBD
 function save(pa::IBD, folder; tgridg=nothing, tgrid=nothing)
 	!(isdir(folder)) && error("invalid directory")
 
+	(tgridg===nothing) && (tgridg = Grid.M1D(0.0, (pa.om.ntg-1)*1.0, pa.om.ntg))
+	(tgrid===nothing) && (tgrid = Grid.M1D(0.0, (pa.om.nt-1)*1.0, pa.om.nt))
+
 	save(pa.om, folder, tgridg=tgridg, tgrid=tgrid)
-	save(pa.optm, folder, tgridg=Grid.M1D_xcorr(tgridg), tgrid=tgrid)
+	save(pa.optm, folder, tgridg=Grid.M1D_xcorr(tgridg), tgrid=Grid.M1D_xcorr(tgrid))
 
 	# finally save err
 	err!(pa) # compute err in cal 
@@ -35,21 +38,22 @@ function save(pa::IBD, folder; tgridg=nothing, tgrid=nothing)
 end
 
 
-function save(pa::FPR, folder; tgridg=nothing, tgrid=nothing)
+function save(pa::FPR, folder; tgridg=nothing, )
 	!(isdir(folder)) && error("invalid directory")
+
+	ntg=size(pa.g,1)
+	nr=size(pa.g,2)
+	(tgridg===nothing) && (tgridg = Grid.M1D(0.0, (ntg-1)*1.0, ntg))
 
 	# save observed vs modelled data
 	save_cross(hcat(pa.p_misfit_xcorr.cy...),hcat(pa.p_misfit_xcorr.pxcorr.cg...), 
 	    "dfpr", folder)
 
-	save(pa.om, folder, tgridg=tgridg, tgrid=tgrid)
-	save(pa.optm, folder, tgridg=tgridg, tgrid=tgrid)
-	savex(pa.optm, folder, tgridg=tgridg, tgrid=tgrid)
+	file=joinpath(folder, "gfpr.csv")
+	CSV.write(file,DataFrame(hcat(tgridg.x, pa.g)))
 
-	# finally save err
-	err!(pa) # compute err in cal 
-	file=joinpath(folder, "err.csv")
-	CSV.write(file, pa.err)
+	file=joinpath(folder, "imgfpr.csv")
+	CSV.write(file,DataFrame(hcat(repeat(tgridg.x,outer=nr),repeat(1:nr,inner=ntg),vec(pa.g))),)
 end
 
 

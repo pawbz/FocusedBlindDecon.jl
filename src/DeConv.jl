@@ -13,7 +13,6 @@ using StatsBase
 using JLD
 using CSV
 using DSP.nextfastfft
-#using ProgressMeter
 
 include("DataTypes.jl")
 include("FPR.jl")
@@ -178,8 +177,13 @@ end
 """
 * re_init_flag :: re-initialize inversions with random input or not?
 """
-function update_all!(pa; max_roundtrips=100, max_reroundtrips=10, ParamAM_func=nothing, roundtrip_tol=1e-6,
-		     optim_tols=[1e-6, 1e-6], verbose=true, )
+function update_all!(pa, io=STDOUT; 
+		     max_roundtrips=100, 
+		     max_reroundtrips=1, 
+		     ParamAM_func=nothing, 
+		     roundtrip_tol=1e-6,
+		     optim_tols=[1e-6, 1e-6], verbose=true,
+		     )
 
 	if(ParamAM_func===nothing)
 		ParamAM_func=x->Inversion.ParamAM(x, optim_tols=optim_tols,name="Blind Decon",
@@ -188,7 +192,7 @@ function update_all!(pa; max_roundtrips=100, max_reroundtrips=10, ParamAM_func=n
 				    min_roundtrips=10,
 				    verbose=verbose,
 				    reinit_func=x->initialize!(pa),
-				    after_reroundtrip_func=x->(err!(pa);),
+		#		    after_reroundtrip_func=x->(err!(pa);),
 				    )
 	end
 
@@ -198,12 +202,18 @@ function update_all!(pa; max_roundtrips=100, max_reroundtrips=10, ParamAM_func=n
 	f2=x->update_g!(pa, pa.gx.x)
 	paam=ParamAM_func([f1, f2])
 
-	# do inversion
-	Inversion.go(paam)
+	if(io===nothing)
+		logfilename=joinpath(pwd(),string("XBD",now(),".log"))
+		io=open(logfilename, "a+")
+	end
+	Inversion.go(paam, io)  # run alternative minimization
 
 	# print errors
-	err!(pa)
-	println(" ")
+	err!(pa, io)
+	write(io, "\n")
+	if(io === nothing)
+		close(io)
+	end
 end
 
 """

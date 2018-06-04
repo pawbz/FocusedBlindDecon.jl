@@ -65,9 +65,9 @@ function BD(ntg, nt, nr;
 	snorm_flag ?	(snormmat=zeros(nt, nt)) : (snormmat=zeros(1,1))
 	snorm_flag ?	(dsnorm=zeros(nt)) : (dsnorm=zeros(1))
 
-	err=DataFrame(g=[], g_nodecon=[], s=[],d=[])
+	err=DataFrame(g=[], g_nodecon=[], s=[], d=[], front_load=[], whiteness=[])
 
-	g_acorr=Conv.P_conv(gsize=[ntg,nr], dsize=[ntg,nr], ssize=[2*ntg-1,nr], slags=[ntg-1, ntg-1], fftwflag=fftwflag)
+	g_acorr=Conv.P_conv(gsize=[ntg,nr], dsize=[ntg,nr], ssize=[2*ntg-1,nr], slags=[ntg-1, ntg-1], fftwflag=FFTW.MEASURE)
 	dg_acorr=zeros(2*ntg-1, nr)
 
 	if(fourier_constraints_flag)
@@ -227,12 +227,16 @@ function inear(gobs, threshold=1e-6)
 end
 
 
-function bd!(pa::BD)
+function bd!(pa::BD, io=STDOUT)
 
+	if(io===nothing)
+		logfilename=joinpath(pwd(),string("XBD",now(),".log"))
+		io=open(logfilename, "a+")
+	end
 
 	update_func_grad!(pa,goptim=[:ls], gαvec=[1.]);
 	initialize!(pa)
-	update_all!(pa, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-8)
+	update_all!(pa, io, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-8)
 
 	update_calsave!(pa.optm, pa.calsave)
 	err!(pa)
@@ -338,7 +342,7 @@ update pa.err
 print?
 give either cal or calsave?
 """
-function err!(pa::BD; cal=pa.optm.cal) 
+function err!(pa::BD, io=STDOUT; cal=pa.optm.cal) 
 	xg_nodecon=hcat(Conv.xcorr(pa.om.d,Conv.P_xcorr(pa.om.nt, pa.om.nr, cglags=[pa.optm.ntg-1, pa.optm.ntg-1]))...)
 	xgobs=hcat(Conv.xcorr(pa.om.g)...) # compute xcorr with reference g
 	fs = Misfits.error_after_normalized_autocor(cal.s, pa.optm.obs.s)
@@ -347,13 +351,19 @@ function err!(pa::BD; cal=pa.optm.cal)
 	fg_nodecon = Misfits.error_squared_euclidean!(nothing, xg_nodecon, xgobs, nothing, norm_flag=true)
 	f = Misfits.error_squared_euclidean!(nothing, cal.d, pa.optm.obs.d, nothing, norm_flag=true)
 
+	whiteness=Conv.func_grad!(nothing, cal.g, Conv.P_misfit_weighted_acorr(pa.om.ntg,pa.om.nr))
+
+	front_load=Misfits.front_load!(nothing, cal.g)
+
 	push!(pa.err[:s],fs)
 	push!(pa.err[:d],f)
 	push!(pa.err[:g],fg)
+	push!(pa.err[:whiteness],whiteness)
+	push!(pa.err[:front_load],front_load)
 	push!(pa.err[:g_nodecon],fg_nodecon)
-	println("Blind Decon Errors\t")
-	println("==================")
-	show(pa.err)
+	write(io,"Blind Decon Errors\t\n")
+	write(io,"==================\n")
+	write(io, string(pa.err))
 end 
 
 function update_g!(pa::BD, xg)

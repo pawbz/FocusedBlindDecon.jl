@@ -43,7 +43,7 @@ function IBD(ntg, nt, nr;
 	sx=X(nt)
 	sx.x[1]=1.0
 
-	err=DataFrame(g=[], g_nodecon=[], s=[],d=[])
+	err=DataFrame(g=[], g_nodecon=[], s=[], d=[], whiteness_obs=[], whiteness_cal=[])
 
 	pa=IBD(om, optm, gx, sx, :g, verbose, err)
 
@@ -101,34 +101,95 @@ function x_to_model!(x, pa::IBD)
 	return pa
 end
 
-function add_focusing!(pa::IBD, α=Inf)
-	(α≠Inf) && error("focusing only enabled for infinte alpha")
+"""
+Zero out elements of g_ii, depending on nlags
+"""
+function focus!(pa::IBD, nlags=1)
+	nr=pa.om.nr
+	ntg=pa.om.ntg
+	irr=1  # auto correlation index
+	for ir in 1:nr
+		for i in nlags:ntg-1    
+			# zero out Greens functions at non zero lags
+			pa.optm.cal.g[ntg+i,irr]=0.0
+			pa.optm.cal.g[ntg-i,irr]=0.0
+		end
+		irr+=nr-(ir-1)
+	end
+
+end
+
+
+"""
+Add a preconditioner to update only a few lags of the g_ii
+Total lags that the precon is non-zero is given by 2*nlags-1
+"""
+function add_focusing_precon!(pa::IBD, nlags=1)
 
 	nr=pa.om.nr
 	ntg=pa.om.ntg
 	gprecon=ones(pa.optm.ntg, pa.optm.nr); 
-	gweights=ones(pa.optm.ntg, pa.optm.nr); 
 
 	irr=1  # auto correlation index
 	for ir in 1:nr
-		for i in 1:ntg-1    
+		for i in nlags:ntg-1    
 			gprecon[ntg+i,irr]=0.0    # put zero at +ve lags
 			gprecon[ntg-i,irr]=0.0    # put zero at -ve lags
-		end
-		for i in 1:ntg-1
-			gweights[ntg+i,irr]=i*2
-			gweights[ntg-i,irr]=i*2
 		end
 		irr+=nr-(ir-1)
 	end
 	add_gprecon!(pa, gprecon)
-	add_gweights!(pa, gweights)
-
-	update_func_grad!(pa,goptim=[:ls], gαvec=[1.]);  # add alpha here later
-
 	return pa
 end
 
+"""
+Add focusing in pa.
+Zero out pa.optm.cal.g for autocorrelations and non zero lags
+"""
+function add_focusing_weights!(pa::IBD)
+
+	nr=pa.om.nr
+	ntg=pa.om.ntg
+	gweights=zeros(pa.optm.ntg, pa.optm.nr); 
+
+	irr=1  # auto correlation index
+	for ir in 1:nr
+		for i in 1:ntg-1
+			gweights[ntg+i,irr]=abs((i)/(ntg-1))
+			gweights[ntg-i,irr]=abs((i)/(ntg-1))
+		end
+		irr+=nr-(ir-1)
+	end
+	add_gweights!(pa, gweights)
+	return pa
+end
+
+
+
+"""
+compute the amount of focusing in cross-correlated g
+"""
+function whiteness_focusing(pa::IBD, attrib=:obs)
+	g=getfield(pa.optm, attrib).g
+	nr=pa.om.nr
+	ntg=pa.om.ntg
+
+	irr=1  # auto correlation index
+	J = 0.0
+	for ir in 1:nr
+		gg=view(g, :, irr)
+		JJ = 0.0
+		fact=inv(gg[ntg]*gg[ntg])
+		for i in eachindex(gg)
+			JJ += gg[i] * gg[i] * fact  * abs((ntg-i)/(ntg    -1))
+
+		end
+		J += JJ
+		irr+=nr-(ir-1)
+	end
+	J = J * inv(nr) # scale with number of receivers
+	return J
+end
 
 function ibd!(pa::IBD)
 
@@ -143,21 +204,41 @@ end
 """
 Focused Blind Deconvolution
 """
-function fbd!(pa::IBD; verbose=true)
+function fibd!(pa::IBD, io=STDOUT; verbose=true, α=[Inf, 0.0])
 
-	# set α=∞ 
-	add_focusing!(pa)
+	if(io===nothing)
+		logfilename=joinpath(pwd(),string("XFIBD",now(),".log"))
+		io=open(logfilename, "a+")
+	end
 
+	updates = x -> update_all!(pa, io,                   
+				    max_reroundtrips=1, max_roundtrips=100000, 
+				    roundtrip_tol=x, verbose=true)
 	initialize!(pa)
-	update_all!(pa, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-8, verbose=verbose)
 
-	err!(pa)
-
-	# set α=0
-	remove_gprecon!(pa, including_zeros=true)
+	add_focusing_weights!(pa) # adds weights
+	for (iα, αv) in enumerate(α)
+		write(io, string("## (",iα,"/",length(α),") homotopy for alpha=", αv,"\n"))
+		# if set α=∞ 
+		if(αv==Inf)
+			focus!(pa)
+			add_focusing_precon!(pa) # adds precon
+			update_func_grad!(pa,goptim=[:ls,], gαvec=[1.]); 
+			updates(1e-10)
+			remove_gprecon!(pa, including_zeros=true)  # remove precon
+		elseif(αv==0.0)
+			remove_gprecon!(pa, including_zeros=true)  # remove precon
+			remove_gweights!(pa, including_zeros=true)
+			update_func_grad!(pa,goptim=[:ls,], gαvec=[1.]); 
+			updates(1e-6)
+		else
+			remove_gprecon!(pa, including_zeros=true)  # remove precon
+			add_focusing_weights!(pa) # adds weights
+			update_func_grad!(pa,goptim=[:ls, :weights], gαvec=[1., αv]); 
+			updates(1e-6)
+		end
+	end
 	remove_gweights!(pa, including_zeros=true)
-	update_all!(pa, max_reroundtrips=1, max_roundtrips=2000, roundtrip_tol=1e-6, verbose=verbose)
-	#
 	err!(pa)
 end
 
@@ -259,21 +340,29 @@ end
 """
 The cross-correlated Green's functions and the auto-correlated source signature have to be reconstructed exactly, except for a scaling factor.
 """
-function err!(pa::IBD; cal=pa.optm.cal) 
-	fg = Misfits.error_squared_euclidean!(nothing, cal.g, pa.optm.obs.g, nothing, norm_flag=true)
-	fs = Misfits.error_squared_euclidean!(nothing, cal.s, pa.optm.obs.s, nothing, norm_flag=true)
+function err!(pa::IBD, io=STDOUT; cal=pa.optm.cal) 
+	(fg, b)	= Misfits.error_after_scaling(cal.g, pa.optm.obs.g) # error upto a scalar b
+	(fs, b)	= Misfits.error_after_scaling(cal.s, pa.optm.obs.s) # error upto a scalar b
 	f = Misfits.error_squared_euclidean!(nothing, cal.d, pa.optm.obs.d, nothing, norm_flag=true)
 
 	xg_nodecon=hcat(Conv.xcorr(pa.om.d,Conv.P_xcorr(pa.om.nt, pa.om.nr, cglags=[pa.om.ntg-1, pa.om.ntg-1]))...)
 	xgobs=hcat(Conv.xcorr(pa.om.g)...) # compute xcorr with reference g
 	fg_nodecon = Misfits.error_squared_euclidean!(nothing, xg_nodecon, xgobs, nothing, norm_flag=true)
 
+	push!(pa.err[:whiteness_obs], whiteness_focusing(pa, :obs))
+	push!(pa.err[:whiteness_cal], whiteness_focusing(pa, :cal))
+
 	push!(pa.err[:s],fs)
 	push!(pa.err[:d],f)
 	push!(pa.err[:g],fg)
 	push!(pa.err[:g_nodecon],fg_nodecon)
-	println("Interferometric Blind Decon Errors\t")
-	println("==================")
-	show(pa.err)
+	write(io,"Interferometric Blind Decon Errors\t\n")
+	write(io,"==================\n")
+	if(io==STDOUT)
+		display(pa.err)
+	else
+		write(io, string(pa.err))
+	end
+	write(io, "\n")
 end 
 
