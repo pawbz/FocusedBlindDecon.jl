@@ -38,7 +38,7 @@ function save(pa::IBD, folder; tgridg=nothing, tgrid=nothing)
 end
 
 
-function save(pa::FPR, folder; tgridg=nothing, )
+function save(pa::FPR, folder; tgridg=nothing, gobs=nothing)
 	!(isdir(folder)) && error("invalid directory")
 
 	ntg=size(pa.g,1)
@@ -51,9 +51,18 @@ function save(pa::FPR, folder; tgridg=nothing, )
 
 	file=joinpath(folder, "gfpr.csv")
 	CSV.write(file,DataFrame(hcat(tgridg.x, pa.g)))
-
+	
 	file=joinpath(folder, "imgfpr.csv")
 	CSV.write(file,DataFrame(hcat(repeat(tgridg.x,outer=nr),repeat(1:nr,inner=ntg),vec(pa.g))),)
+
+	if(!(gobs===nothing))
+		file=joinpath(folder, "gfprobs.csv")
+		CSV.write(file,DataFrame(hcat(tgridg.x, gobs)))
+
+		file=joinpath(folder, "imgfprobs.csv")
+		CSV.write(file,DataFrame(hcat(repeat(tgridg.x,outer=nr),repeat(1:nr,inner=ntg),vec(gobs))),)
+	end
+
 end
 
 

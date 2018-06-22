@@ -13,6 +13,7 @@ using StatsBase
 using JLD
 using CSV
 using DSP.nextfastfft
+using FFTW
 
 include("DataTypes.jl")
 include("FPR.jl")
