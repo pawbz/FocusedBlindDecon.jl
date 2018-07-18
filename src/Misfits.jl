@@ -11,9 +11,11 @@ function func_grad!(storage, x::AbstractVector{Float64},pa)
 
 	if(storage === nothing)
 		# compute misfit and δdcal
-		f = Misfits.error_squared_euclidean!(nothing, pa.optm.cal.d, pa.optm.obs.d, nothing, norm_flag=true)
+		f = Misfits.error_squared_euclidean!(nothing, pa.optm.cal.d, pa.optm.obs.d, 
+				       nothing, norm_flag=false)
 	else
-		f = Misfits.error_squared_euclidean!(pa.optm.ddcal, pa.optm.cal.d, pa.optm.obs.d, nothing, norm_flag=true)
+		f = Misfits.error_squared_euclidean!(pa.optm.ddcal, pa.optm.cal.d, 
+				       pa.optm.obs.d, nothing, norm_flag=false)
 		Fadj!(pa, x, storage, pa.optm.ddcal)
 	end
 	return f

@@ -96,7 +96,7 @@ function update!(g::AbstractMatrix{Float64}, w::AbstractMatrix{Float64}, pa::FPR
 	"""
 	Unbounded LBFGS inversion, only for testing
 	"""
-	res = optimize(x->fg!(nothing, x, pa), (storage, x)->fg!(storage, x, pa), 
+	res = optimize(xx->fg!(nothing, xx, pa), (storage, xx)->fg!(storage, xx, pa), 
 		x, 
 		ConjugateGradient(),
 		#BFGS(),

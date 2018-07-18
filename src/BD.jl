@@ -114,7 +114,7 @@ function BD(ntg, nt, nr;
 	add_precons!(pa, pa.om.g, attrib=gprecon_attrib)
 
 	initialize!(pa)
-	update_func_grad!(pa,goptim=goptim,soptim=soptim,gαvec=gαvec,sαvec=sαvec)
+	#update_func_grad!(pa,goptim=goptim,soptim=soptim,gαvec=gαvec,sαvec=sαvec)
 
 	return pa
 	
@@ -234,7 +234,7 @@ function bd!(pa::BD, io=STDOUT)
 		io=open(logfilename, "a+")
 	end
 
-	update_func_grad!(pa,goptim=[:ls], gαvec=[1.]);
+	#update_func_grad!(pa,goptim=[:ls], gαvec=[1.]);
 	initialize!(pa)
 	update_all!(pa, io, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-8)
 
@@ -371,7 +371,7 @@ function update_g!(pa::BD, xg)
 #	if(pa.fourier_constraints_flag)
 #		phase_retrievel!(pa.optm.cal.g, pa.gpacse)
 #	end
-	resg = update!(pa, xg,  pa.gx.func, pa.gx.grad!)
+	resg = update!(pa, xg)
 	fg = Optim.minimum(resg)
 	return fg
 end
@@ -418,7 +418,7 @@ function update_s!(pa::BD, xs)
 		Inversion.go(paam)
 
 	end
-	ress = update!(pa, xs, pa.sx.func, pa.sx.grad!)
+	ress = update!(pa, xs)
 	fs = Optim.minimum(ress)
 	return fs
 end

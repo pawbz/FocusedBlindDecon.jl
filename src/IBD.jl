@@ -11,7 +11,7 @@ mutable struct IBD
 	sx::X
 	sx_attrib::Symbol
 	sx_fix_zero_lag_flag::Bool
-	sx_fourier_constraint_flag::Bool
+	fourier_constraint_flag::Bool
 	attrib_inv::Symbol
 	verbose::Bool
 	err::DataFrames.DataFrame
@@ -27,15 +27,17 @@ function IBD(ntg, nt, nr;
 	       fftwflag=FFTW.PATIENT,
 	       sx_attrib=:positive,
 	       sx_fix_zero_lag_flag=true,
-	       sx_fourier_constraint_flag=false,
+	       fourier_constraint_flag=false,
 	       dobs=nothing, 
 	       gobs=nothing, 
 	       sobs=nothing, 
 	       verbose=false,
 	       ) 
 
-	# use maximum threads for fft
-	fft_threads &&  (FFTW.set_num_threads(Sys.CPU_CORES))
+	if(fftwflag==FFTW.PATIENT)
+		# use maximum threads for fft only for patient
+		fft_threads &&  (FFTW.set_num_threads(Sys.CPU_CORES))
+	end
 
 	# store observed data
 	om=ObsModel(ntg, nt, nr, d=dobs, g=gobs, s=sobs)
@@ -62,7 +64,7 @@ function IBD(ntg, nt, nr;
 	err=DataFrame(g=[], g_nodecon=[], s=[], d=[], whiteness_obs=[], whiteness_cal=[])
 
 	pa=IBD(om, optm, gx, sx, sx_attrib, sx_fix_zero_lag_flag, 
-	sx_fourier_constraint_flag,
+	fourier_constraint_flag,
 	:g, verbose, err)
 
 	if(sx_fix_zero_lag_flag)
@@ -88,10 +90,14 @@ function IBD(ntg, nt, nr;
 	replace!(pa.optm, sobs, :obs, :s )
 	# obs.d <-- dobs
 	dobs=hcat(Conv.xcorr(pa.om.d)...) # do a cross-correlation 
+
 	copy!(pa.optm.obs.d, dobs) # overwrites the forward modelling done in previous steps  
 
+	# normalize the observed data to 1.0
+	scale!(pa.optm.obs.d, inv(maximum(pa.optm.obs.d)))
+
 	initialize!(pa)
-	update_func_grad!(pa)
+	#update_func_grad!(pa)
 
 	return pa
 	
@@ -172,11 +178,11 @@ end
 Add a preconditioner to update only a few lags of the g_ii
 Total lags that the precon is non-zero is given by 2*nlags-1
 """
-function add_focusing_gprecon!(pa::IBD, nlags=1)
+function add_focusing_gprecon!(pa::IBD, nlags=1; k=1.0)
 
 	nr=pa.om.nr
 	ntg=pa.om.ntg
-	gprecon=ones(pa.optm.ntg, pa.optm.nr); 
+	gprecon=ones(pa.optm.ntg, pa.optm.nr).*k; 
 
 	irr=1  # auto correlation index
 	for ir in 1:nr
@@ -184,11 +190,31 @@ function add_focusing_gprecon!(pa::IBD, nlags=1)
 			gprecon[ntg+i,irr]=0.0    # put zero at +ve lags
 			gprecon[ntg-i,irr]=0.0    # put zero at -ve lags
 		end
+		gprecon[ntg,irr]=1.0    # put zero at -ve lags
 		irr+=nr-(ir-1)
 	end
 	add_gprecon!(pa, gprecon)
 	return pa
 end
+
+"""
+Add a preconditioner to update only g_ii without focusing
+"""
+function add_autocorr_gprecon!(pa::IBD)
+
+	nr=pa.om.nr
+	ntg=pa.om.ntg
+	gprecon=zeros(pa.optm.ntg, pa.optm.nr); 
+
+	irr=1  # auto correlation index
+	for ir in 1:nr
+		gprecon[:,irr]=1.0    # put one
+		irr+=nr-(ir-1)
+	end
+	add_gprecon!(pa, gprecon)
+	return pa
+end
+
 
 """
 Add focusing in pa.
@@ -239,10 +265,12 @@ function whiteness_focusing(pa::IBD, attrib=:obs)
 	return J
 end
 
-function ibd!(pa::IBD)
+function ibd!(pa::IBD, io=STDOUT)
 
-	initialize!(pa)
-	update_all!(pa, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-8)
+	remove_gprecon!(pa, including_zeros=true)  # remove precon
+	remove_gweights!(pa, including_zeros=true)
+	#update_func_grad!(pa,goptim=[:ls,], gαvec=[1.]); 
+	update_all!(pa, io, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-8)
 
 	err!(pa)
 end
@@ -252,7 +280,7 @@ end
 """
 Focused Blind Deconvolution
 """
-function fibd!(pa::IBD, io=STDOUT; verbose=true, α=[Inf, 0.0])
+function fibd!(pa::IBD, io=STDOUT; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-6])
 
 	if(io===nothing)
 		logfilename=joinpath(pwd(),string("XFIBD",now(),".log"))
@@ -270,19 +298,22 @@ function fibd!(pa::IBD, io=STDOUT; verbose=true, α=[Inf, 0.0])
 		if(αv==Inf)
 			focus!(pa)
 			add_focusing_gprecon!(pa) # adds precon
-			update_func_grad!(pa,goptim=[:ls,], gαvec=[1.]); 
-			updates(1e-10)
+			#update_func_grad!(pa,goptim=[:ls,], gαvec=[1.]); 
+			updates(tol[iα])
+			#add_autocorr_gprecon!(pa) # adds precon
+			#updates(tol[iα])
 			remove_gprecon!(pa, including_zeros=true)  # remove precon
 		elseif(αv==0.0)
 			remove_gprecon!(pa, including_zeros=true)  # remove precon
 			remove_gweights!(pa, including_zeros=true)
-			update_func_grad!(pa,goptim=[:ls,], gαvec=[1.]); 
-			updates(1e-6)
+			#update_func_grad!(pa,goptim=[:ls,], gαvec=[1.]); 
+			updates(tol[iα])
 		else
+			error("not functional for arbitary alpha")
 			remove_gprecon!(pa, including_zeros=true)  # remove precon
 			add_focusing_gweights!(pa) # adds weights
-			update_func_grad!(pa,goptim=[:ls, :weights], gαvec=[1., αv]); 
-			updates(1e-6)
+			#update_func_grad!(pa,goptim=[:ls, :weights], gαvec=[1., αv]); 
+			updates(tol[iα])
 		end
 	end
 	remove_gweights!(pa, including_zeros=true)
@@ -290,14 +321,18 @@ function fibd!(pa::IBD, io=STDOUT; verbose=true, α=[Inf, 0.0])
 end
 
 
-function initialize!(pa::IBD)
+function initialize!(pa::IBD, all_zero=false)
 	for i in eachindex(pa.optm.cal.s)
 		pa.optm.cal.s[i]=0.0 # +ve lags and -ve lags
 	end
 	pa.optm.cal.s[pa.om.nt]=1.0 # initialize zero lag to one
-	for i in eachindex(pa.optm.cal.g)
-		x=(pa.gx.precon[i]≠0.0) ? randn() : 0.0
-		pa.optm.cal.g[i]=x
+	if(all_zero)
+		pa.optm.cal.g[:]=0.0
+	else
+		for i in eachindex(pa.optm.cal.g)
+			x=(pa.gx.precon[i]≠0.0) ? randn() : 0.0
+			pa.optm.cal.g[i]=x
+		end
 	end
 end
 
@@ -386,14 +421,36 @@ end
 
 function update_g!(pa::IBD, xg)
 	pa.attrib_inv=:g    
-	resg = update!(pa, xg,  pa.gx.func, pa.gx.grad!)
+	if(pa.fourier_constraint_flag)
+		pac=pa.optm.cal
+		Conv.pad_truncate!(pac.g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2, 1)
+		A_mul_B!(pac.gfreq, pac.gfftp, pac.gpad)
+
+		ntot=1
+		nr=pa.om.nr
+		for ir in 1:nr
+			for i in size(pac.gfreq,1)
+				pac.gfreq[i,ntot]=complex(real(pac.gfreq[i,ntot]),0.0)
+				if(real(pac.gfreq[i,ntot]) < 0.0)
+					pac.gfreq[i,ntot]=complex(0.0,0.0)
+				end
+			end
+			ntot += (nr-ir+1)
+		end
+
+
+		A_mul_B!(pac.gpad, pac.gifftp, pac.gfreq)
+		Conv.pad_truncate!(pac.g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2, -1)
+	end
+
+	resg = update!(pa, xg)
 	fg = Optim.minimum(resg)
 	return fg
 end
 
 function update_s!(pa::IBD, xs)
 	pa.attrib_inv=:s    
-	if(pa.sx_fourier_constraint_flag)
+	if(pa.fourier_constraint_flag)
 		pac=pa.optm.cal
 		Conv.pad_truncate!(pac.s, pac.spad, pac.slags[1], pac.slags[2], pac.np2, 1)
 		A_mul_B!(pac.sfreq, pac.sfftp, pac.spad)
@@ -409,7 +466,7 @@ function update_s!(pa::IBD, xs)
 		A_mul_B!(pac.spad, pac.sifftp, pac.sfreq)
 		Conv.pad_truncate!(pac.s, pac.spad, pac.slags[1], pac.slags[2], pac.np2, -1)
 	end
-	ress = update!(pa, xs, pa.sx.func, pa.sx.grad!)
+	ress = update!(pa, xs)
 	fs = Optim.minimum(ress)
 	return fs
 end

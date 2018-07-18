@@ -49,6 +49,7 @@ function add_gweights!(pa, gweights)
 end
 
 
+#=
 
 function update_func_grad!(pa; goptim=nothing, soptim=nothing, gαvec=nothing, sαvec=nothing)
 	# they will be changed in this program, so make a copy 
@@ -120,13 +121,17 @@ function update_func_grad!(pa; goptim=nothing, soptim=nothing, gαvec=nothing, s
 
 	return pa
 end
+=#
 
 
 # core algorithm
-function update!(pa, x, f, g!; 
+function update!(pa, x, 
 		 store_trace::Bool=false, 
 		 extended_trace::Bool=false, 
 	     f_tol::Float64=1e-8, g_tol::Float64=1e-30, x_tol::Float64=1e-30, iterations=2000)
+
+	f =x->func_grad!(nothing, x,  pa) 
+	g! =(storage, x)->func_grad!(storage, x,  pa)
 
 	# initial w to x
 	model_to_x!(x, pa)
@@ -187,12 +192,12 @@ function update_all!(pa, io=STDOUT;
 		     )
 
 	if(ParamAM_func===nothing)
-		ParamAM_func=x->Inversion.ParamAM(x, optim_tols=optim_tols,name="Blind Decon",
+		ParamAM_func=xx->Inversion.ParamAM(xx, optim_tols=optim_tols,name="Blind Decon",
 				    roundtrip_tol=roundtrip_tol, max_roundtrips=max_roundtrips,
 				    max_reroundtrips=max_reroundtrips,
 				    min_roundtrips=10,
 				    verbose=verbose,
-				    reinit_func=x->initialize!(pa),
+				    reinit_func=xxx->initialize!(pa),
 		#		    after_reroundtrip_func=x->(err!(pa);),
 				    )
 	end

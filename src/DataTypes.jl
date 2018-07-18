@@ -66,7 +66,7 @@ function ObsModel(ntg, nt, nr;
 	       g=nothing, 
 	       s=nothing)
 	(s===nothing) && (s=zeros(nt))
-	(g===nothing) && (s=zeros(ntg,nr))
+	(g===nothing) && (g=zeros(ntg,nr))
 	if(d===nothing)
 		(iszero(g) || iszero(s)) && error("need gobs and sobs")
 		obstemp=Conv.P_conv(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], 
@@ -86,13 +86,11 @@ Inversion variables
 mutable struct X
 	x::Vector{Float64}
 	last_x::Vector{Float64}
-	func::Function
-	grad!::Function
 	precon::Vector{Float64}
 	preconI::Vector{Float64}
 	weights::Vector{Float64}
 end
 
 function X(n)
-	return X(zeros(n), randn(n), x->randn(), x->randn(), ones(n), ones(n), zeros(n))
+	return X(zeros(n), randn(n), ones(n), ones(n), zeros(n))
 end
