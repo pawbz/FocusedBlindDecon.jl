@@ -22,7 +22,7 @@ end
 """
 `gprecon` : a preconditioner applied to each Greens functions [ntg]
 """
-function IBD(ntg, nt, nr; 
+function IBD(ntg, nt, nr, nts;
 	       fft_threads=true,
 	       fftwflag=FFTW.PATIENT,
 	       sx_attrib=:positive,
@@ -34,17 +34,22 @@ function IBD(ntg, nt, nr;
 	       verbose=false,
 	       ) 
 
+	if(ntg+nts-1 ≠ nt)
+		error("invalid sizes for convolutional model")
+	end
+
 	if(fftwflag==FFTW.PATIENT)
+
 		# use maximum threads for fft only for patient
 		fft_threads &&  (FFTW.set_num_threads(Sys.CPU_CORES))
 	end
 
 	# store observed data
-	om=ObsModel(ntg, nt, nr, d=dobs, g=gobs, s=sobs)
+	om=ObsModel(ntg, nt, nr, nts, d=dobs, g=gobs, s=sobs)
 
-	# create models depending on mode
-	optm=OptimModel(2*ntg-1, 2*nt-1, binomial(nr, 2)+nr, fftwflag=fftwflag, 
-	slags=[nt-1, nt-1], 
+	# create interferometric Optim 
+	optm=OptimModel(2*ntg-1, 2*nt-1, binomial(nr, 2)+nr, 2*nts-1, fftwflag=fftwflag, 
+	slags=[nts-1, nts-1], 
 	dlags=[nt-1, nt-1], 
 	glags=[ntg-1, ntg-1], 
 		 )
@@ -53,7 +58,7 @@ function IBD(ntg, nt, nr;
 	gx=X(length(optm.cal.g))
 
 	if(sx_attrib==:positive)
-		sx=X(nt)
+		sx=X(nts)
 		sx.x[1]=1.0
 	elseif(sx_attrib==:all)
 		sx=X(length(optm.cal.s))
@@ -73,8 +78,8 @@ function IBD(ntg, nt, nr;
 			pa.sx.precon[1]=0.0 # do not update zero lag
 			pa.sx.preconI[1]=0.0 # do not update zero lag
 		elseif(sx_attrib==:all)
-			pa.sx.precon[nt]=0.0 # do not update zero lag
-			pa.sx.preconI[nt]=0.0 # do not update zero lag
+			pa.sx.precon[nts]=0.0 # do not update zero lag
+			pa.sx.preconI[nts]=0.0 # do not update zero lag
 		else
 			error("invalid sx_attrib")
 		end
@@ -110,10 +115,10 @@ function model_to_x!(x, pa::IBD)
 			for i in eachindex(x)
 				x[i]=pa.optm.cal.s[i]*pa.sx.precon[i] 
 			end
-			pa.sx_fix_zero_lag_flag && (x[pa.om.nt]=1.0) # zero lag will be fixed
+			pa.sx_fix_zero_lag_flag && (x[pa.om.nts]=1.0) # zero lag will be fixed
 		elseif(pa.sx_attrib==:positive)
 			for i in eachindex(x)
-				x[i]=pa.optm.cal.s[i+pa.om.nt-1]*pa.sx.precon[i] # just take positive lags
+				x[i]=pa.optm.cal.s[i+pa.om.nts-1]*pa.sx.precon[i] # just take positive lags
 			end
 			pa.sx_fix_zero_lag_flag && (x[1]=1.0) # zero lag will be fixed
 		else	
@@ -136,14 +141,14 @@ function x_to_model!(x, pa::IBD)
 			end
 			pa.sx_fix_zero_lag_flag && (pa.optm.cal.s[pa.om.nt]=1.0) # fix zero lag
 		elseif(pa.sx_attrib==:positive)
-			for i in 1:pa.om.nt-1
+			for i in 1:pa.om.nts-1
 				# put same in positive lags
-				pa.optm.cal.s[pa.om.nt+i]=x[i+1]*pa.sx.preconI[i+1]
+				pa.optm.cal.s[pa.om.nts+i]=x[i+1]*pa.sx.preconI[i+1]
 				# put same in negative lags
-				pa.optm.cal.s[pa.om.nt-i]=x[i+1]*pa.sx.preconI[i+1]
+				pa.optm.cal.s[pa.om.nts-i]=x[i+1]*pa.sx.preconI[i+1]
 			end
-			pa.optm.cal.s[pa.om.nt]=x[1]*pa.sx.preconI[1]
-			pa.sx_fix_zero_lag_flag && (pa.optm.cal.s[pa.om.nt]=1.0) # fix zero lag
+			pa.optm.cal.s[pa.om.nts]=x[1]*pa.sx.preconI[1]
+			pa.sx_fix_zero_lag_flag && (pa.optm.cal.s[pa.om.nts]=1.0) # fix zero lag
 		else
 			error("invalid sx_attrib")
 		end
@@ -325,7 +330,7 @@ function initialize!(pa::IBD, all_zero=false)
 	for i in eachindex(pa.optm.cal.s)
 		pa.optm.cal.s[i]=0.0 # +ve lags and -ve lags
 	end
-	pa.optm.cal.s[pa.om.nt]=1.0 # initialize zero lag to one
+	pa.optm.cal.s[pa.om.nts]=1.0 # initialize zero lag to one
 	if(all_zero)
 		pa.optm.cal.g[:]=0.0
 	else
@@ -373,21 +378,21 @@ function Fadj!(pa, x, storage, dcal)
 		Conv.mod!(pa.optm.cal, :s, d=dcal, s=pa.optm.ds)
 		if(pa.sx_attrib == :positive)
 			# stacking over +ve and -ve lags
-			for j in 2:pa.om.nt
-				storage[j] += pa.optm.ds[pa.om.nt-j+1] # -ve lags
-				storage[j] += pa.optm.ds[pa.om.nt+j-1] # +ve lags
+			for j in 2:pa.om.nts
+				storage[j] += pa.optm.ds[pa.om.nts-j+1] # -ve lags
+				storage[j] += pa.optm.ds[pa.om.nts+j-1] # +ve lags
 			end
 			if(pa.sx_fix_zero_lag_flag)
 				storage[1]=0.0
 			else
-				storage[1]=pa.optm.ds[pa.om.nt]
+				storage[1]=pa.optm.ds[pa.om.nts]
 			end
 		elseif(pa.sx_attrib == :all)
 			for i in eachindex(storage)
 				storage[i] = pa.optm.ds[i] #
 			end
 			if(pa.sx_fix_zero_lag_flag)
-				storage[pa.om.nt]=0.0
+				storage[pa.om.nts]=0.0
 			end
 		else
 			error("invalid attrib" )

@@ -11,12 +11,11 @@ mutable struct FPR
 	dg::Matrix{Float64}
 end
 
-function FPR(nt::Int, nr::Int; 
-	     cymat=nothing, cy=nothing, 
-	     gobs=nothing, nearest_receiver=nothing)
+function update_cymat!(pa::FPR; cymat=nothing, cy=nothing, gobs=nothing, nearest_receiver=nothing)
+	(cymat===nothing) && (cy===nothing) && error("need cy or cymat")
 	if(nearest_receiver===nothing)
 		if(gobs===nothing)
-			warn("assuming ir=1 is the nearest recevier")
+			info("assuming ir=1 is the nearest recevier")
 			ine=1
 		else
 			ine=inear(gobs)
@@ -25,19 +24,34 @@ function FPR(nt::Int, nr::Int;
 		ine=nearest_receiver
 	end
 
-	(cymat===nothing) && (cy===nothing) && error("need cy or cymat")
 	if(cy===nothing)
 		cyshifted=Conv.cgmat(cymat,nr,cg_indices=circshift(1:nr, -ine+1))
 	else
 		cymattemp=Conv.cgmat(cy,nr)
 		cyshifted=Conv.cgmat(cymattemp,nr,cg_indices=circshift(1:nr, -ine+1))
 	end
+
+end
+
+function FPR(nt::Int, nr::Int; 
+	     cymat=nothing, cy=nothing, 
+	     gobs=nothing, nearest_receiver=nothing)
+
+	cyshifted=Conv.cgmat(randn(2*nt-1,binomial(nr, 2)+nr),nr)
+
 	p_misfit_xcorr=Conv.P_misfit_xcorr(nt, nr, Conv.P_xcorr(nt, nr, 
 						    norm_flag=false, 
 						    ), cy=cyshifted)
 	p_misfit_xcorr_focus=Conv.P_misfit_xcorr(nt, nr, Conv.P_xcorr(nt, nr, 
 						    norm_flag=false, 
 						    cg_indices=[1]), cy=[cyshifted[1]])
+
+
+	# if either of cymat or cy are present, update... otherwise, do that later
+	if(!((cymat===nothing) && (cy===nothing)))
+		update_cymat!(pa::FPR; cymat=cymat, cy=cy, gobs=gobs, nearest_receiver=nearest_receiver)
+	end
+
 	return FPR(p_misfit_xcorr, 
 	    p_misfit_xcorr_focus,
 	    zeros(nt,nr), zeros(nt, nr))
@@ -50,7 +64,7 @@ function update!(g::AbstractMatrix{Float64}, w::AbstractMatrix{Float64}, pa::FPR
 		 focus_flag=false,
 		 store_trace::Bool=false, 
 		 extended_trace::Bool=false, 
-	         f_tol::Float64=1e-10, g_tol::Float64=1e-30, x_tol::Float64=1e-30)
+	         f_tol::Float64=1e-8, g_tol::Float64=1e-8, x_tol::Float64=1e-30)
 
 	if(focus_flag)
 		pax=pa.p_misfit_xcorr_focus

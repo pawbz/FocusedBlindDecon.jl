@@ -22,13 +22,14 @@ end
 """
 Save IBD
 """
-function save(pa::IBD, folder; tgridg=nothing, tgrid=nothing)
+function save(pa::IBD, folder; tgridg=nothing, tgrid=nothing, tgrids=nothing)
 	!(isdir(folder)) && error("invalid directory")
 
 	(tgridg===nothing) && (tgridg = Grid.M1D(0.0, (pa.om.ntg-1)*1.0, pa.om.ntg))
 	(tgrid===nothing) && (tgrid = Grid.M1D(0.0, (pa.om.nt-1)*1.0, pa.om.nt))
+	(tgrids===nothing) && (tgrids = Grid.M1D(0.0, (pa.om.nts-1)*1.0, pa.om.nts))
 
-	save(pa.om, folder, tgridg=tgridg, tgrid=tgrid)
+	save(pa.om, folder, tgridg=tgridg, tgrid=tgrid, tgrids=tgrids)
 	save(pa.optm, folder, tgridg=Grid.M1D_xcorr(tgridg), tgrid=Grid.M1D_xcorr(tgrid))
 
 	# finally save err
@@ -67,12 +68,13 @@ end
 
 
 
-function save(pa::ObsModel, folder; tgridg=nothing, tgrid=nothing)
+function save(pa::ObsModel, folder; tgridg=nothing, tgrid=nothing, tgrids=nothing)
 	!(isdir(folder)) && error("invalid directory")
 
 
 	(tgridg===nothing) && (tgridg = Grid.M1D(0.0, (pa.ntg-1)*1.0, pa.ntg))
 	(tgrid===nothing) && (tgrid = Grid.M1D(0.0, (pa.nt-1)*1.0, pa.nt))
+	(tgrids===nothing) && (tgrids = Grid.M1D(0.0, (pa.nts-1)*1.0, pa.nts))
 
 	# save original g
 	file=joinpath(folder, "gobs.csv")
@@ -84,7 +86,7 @@ function save(pa::ObsModel, folder; tgridg=nothing, tgrid=nothing)
 
 	# save original s
 	file=joinpath(folder, "sobs.csv")
-	CSV.write(file,DataFrame(hcat(tgrid.x,pa.s)))
+	CSV.write(file,DataFrame(hcat(tgrids.x,pa.s)))
 
 	# save data
 	file=joinpath(folder, "dobs.csv")

@@ -2,6 +2,8 @@
 #__precompile__()
 
 module DeConv
+
+
 using Inversion
 using Misfits
 using Conv
@@ -10,10 +12,16 @@ using Optim, LineSearches
 using RecipesBase
 using DataFrames
 using StatsBase
+using IterativeSolvers
+using LinearMaps
 using JLD
 using CSV
 using DSP.nextfastfft
 using FFTW
+
+export retract!
+export project_gradient!
+export BandLimit
 
 include("DataTypes.jl")
 include("FPR.jl")
@@ -128,7 +136,7 @@ end
 function update!(pa, x, 
 		 store_trace::Bool=false, 
 		 extended_trace::Bool=false, 
-	     f_tol::Float64=1e-8, g_tol::Float64=1e-30, x_tol::Float64=1e-30, iterations=2000)
+	     f_tol::Float64=1e-8, g_tol::Float64=1e-8, x_tol::Float64=1e-30, iterations=2000)
 
 	f =x->func_grad!(nothing, x,  pa) 
 	g! =(storage, x)->func_grad!(storage, x,  pa)
@@ -143,7 +151,7 @@ function update!(pa, x,
 	#oacc10 = OACCEL(nlprecon=nlprecon, wmax=10)
 	res = optimize(f, g!, x, 
 #		oacc10,
-		ConjugateGradient(),
+ConjugateGradient(manifold=BandLimit()),
 		       #BFGS(),
 		       Optim.Options(g_tol = g_tol, f_tol=f_tol, x_tol=x_tol,
 		       iterations = iterations, store_trace = store_trace,

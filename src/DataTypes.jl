@@ -6,6 +6,7 @@ Optimization is performed on this model
 mutable struct OptimModel
 	ntg::Int64
 	nt::Int64
+	nts::Int64
 	nr::Int64
 	obs::Conv.P_conv{Float64,2,2,1} # observed convolutional model
 	cal::Conv.P_conv{Float64,2,2,1} # calculated convolutional model
@@ -15,9 +16,9 @@ mutable struct OptimModel
 end
 	
 
-function OptimModel(ntg, nt, nr; fftwflag=FFTW.MEASURE, slags=nothing, dlags=nothing, glags=nothing)
+function OptimModel(ntg, nt, nr, nts; fftwflag=FFTW.MEASURE, slags=nothing, dlags=nothing, glags=nothing)
 
-	obs=Conv.P_conv(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], 
+	obs=Conv.P_conv(ssize=[nts], dsize=[nt,nr], gsize=[ntg,nr], 
 	slags=slags,
 	glags=glags,
 	dlags=dlags,
@@ -29,7 +30,7 @@ function OptimModel(ntg, nt, nr; fftwflag=FFTW.MEASURE, slags=nothing, dlags=not
 	dg=zeros(cal.g)
 	ddcal=zeros(cal.d)
 
-	return OptimModel(ntg, nt, nr, obs, cal, dg, ds, ddcal)
+	return OptimModel(ntg, nt, nts, nr, obs, cal, dg, ds, ddcal)
 end
 
 function replace!(pa::OptimModel, x, fieldmod::Symbol, field::Symbol)
@@ -54,6 +55,7 @@ Store actual
 mutable struct ObsModel
 	ntg::Int64
 	nt::Int64
+	nts::Int64
 	nr::Int64
 	g::Array{Float64,2} 
 	s::Vector{Float64} 
@@ -61,23 +63,22 @@ mutable struct ObsModel
 end
 
 
-function ObsModel(ntg, nt, nr;
+function ObsModel(ntg, nt, nr, nts;
 	       d=nothing, 
 	       g=nothing, 
 	       s=nothing)
-	(s===nothing) && (s=zeros(nt))
+	(s===nothing) && (s=zeros(nts))
 	(g===nothing) && (g=zeros(ntg,nr))
 	if(d===nothing)
 		(iszero(g) || iszero(s)) && error("need gobs and sobs")
-		obstemp=Conv.P_conv(ssize=[nt], dsize=[nt,nr], gsize=[ntg,nr], 
-		     slags=[nt-1, 0])
+		obstemp=Conv.P_conv(ssize=[nts], dsize=[nt,nr], gsize=[ntg,nr], slags=[nts-1, 0])
 		copy!(obstemp.g, g)
 		copy!(obstemp.s, s)
 		Conv.mod!(obstemp, :d) # do a convolution to model data
 		d=obstemp.d
 	end
 
-	return ObsModel(ntg, nt, nr, g, s, d)
+	return ObsModel(ntg, nt, nts, nr, g, s, d)
 end
 
 """

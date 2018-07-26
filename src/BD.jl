@@ -12,14 +12,6 @@ mutable struct BD
 	attrib_inv::Symbol
 	verbose::Bool
 	err::DataFrames.DataFrame
-	# trying to penalize the energy in the correlations of g (not in practice)
-	g_acorr::Conv.P_conv{Float64,2,2,2}
-	dg_acorr::Array{Float64,2}
-	sintensity::Intensity
-	sa0::Array{Array{Float64,2},1} # auto correlation of the source (known for mode :bda)
-	gij0::Array{Array{Float64,2},1}
-	spacse::Conv.P_misfit_xcorr
-	gpacse::Conv.P_misfit_xcorr
 	fourier_constraints_flag::Bool
 end
 
@@ -28,7 +20,7 @@ end
 """
 Constructor for the blind deconvolution problem
 """
-function BD(ntg, nt, nr; 
+function BD(ntg, nt, nr, nts; 
 	    gprecon_attrib=:none,
 	       gweights=nothing,
 	       goptim=nothing,
@@ -41,19 +33,23 @@ function BD(ntg, nt, nr;
 	       fftwflag=FFTW.PATIENT,
 	       fourier_constraints_flag=false,
 	       dobs=nothing, gobs=nothing, sobs=nothing, verbose=false, attrib_inv=:g,
-	       sa0=nothing,
-	       gij0=nothing
 	       ) 
 
-	# use maximum threads for fft
-	fft_threads &&  (FFTW.set_num_threads(Sys.CPU_CORES))
+	if(ntg+nts-1 ≠ nt)
+		error("invalid sizes for convolutional model")
+	end
+
+	if(fftwflag==FFTW.PATIENT)
+		# use maximum threads for fft
+		fft_threads &&  (FFTW.set_num_threads(Sys.CPU_CORES))
+	end
 
 	# store observed data
-	om=ObsModel(ntg, nt, nr, d=dobs, g=gobs, s=sobs)
+	om=ObsModel(ntg, nt, nr, nts, d=dobs, g=gobs, s=sobs)
 
 	# create models depending on mode
-	optm=OptimModel(ntg, nt, nr, fftwflag=fftwflag, 
-	slags=[nt-1, 0], 
+	optm=OptimModel(ntg, nt, nr, nts, fftwflag=fftwflag, 
+	slags=[nts-1, 0], 
 	dlags=[nt-1, 0], 
 	glags=[ntg-1, 0], 
 		 )
@@ -62,39 +58,18 @@ function BD(ntg, nt, nr;
 	gx=X(length(optm.cal.g))
 	sx=X(length(optm.cal.s))
 
-	snorm_flag ?	(snormmat=zeros(nt, nt)) : (snormmat=zeros(1,1))
-	snorm_flag ?	(dsnorm=zeros(nt)) : (dsnorm=zeros(1))
+	snorm_flag ?	(snormmat=zeros(nts, nts)) : (snormmat=zeros(1,1))
+	snorm_flag ?	(dsnorm=zeros(nts)) : (dsnorm=zeros(1))
 
 	err=DataFrame(g=[], g_nodecon=[], s=[], d=[], front_load=[], whiteness=[])
 
-	g_acorr=Conv.P_conv(gsize=[ntg,nr], dsize=[ntg,nr], ssize=[2*ntg-1,nr], slags=[ntg-1, ntg-1], fftwflag=FFTW.MEASURE)
-	dg_acorr=zeros(2*ntg-1, nr)
-
-	if(fourier_constraints_flag)
-		(sa0===nothing) && error("need sa0")
-		sintensity=DeConv.Intensity(sa0)
-	else
-		sa0=zeros(2*nt-1)
-		sintensity=DeConv.Intensity(sa0)
-	end
-
-	sa00=[zeros(2*nt-1,1)]
-	gij00=[zeros(2*ntg-1,nr-ir+1) for ir in 1:nr]
-	if(fourier_constraints_flag)
-		Conv.cgmat!(sa0, sa00, 1)
-		Conv.cgmat!(gij0, gij00, 1)
-	end
-
-	spacse=Conv.P_misfit_xcorr(nt,1,cy=sa00)
-	gpacse=Conv.P_misfit_xcorr(ntg,nr,cy=gij00)
 
 	calsave=deepcopy(optm.cal)
 	pa=BD(
 		om,		optm,		calsave,		gx,		sx,		snorm_flag,
 		snormmat,		dsnorm,		attrib_inv,		verbose,
 		err,		# trying to penalize the energy in the correlations of g (not in practice),
-		g_acorr,		dg_acorr,		sintensity,
-		sa00,gij00,spacse,gpacse,fourier_constraints_flag)
+		fourier_constraints_flag)
 
 
 
@@ -166,12 +141,12 @@ function add_precons!(pa::BD, gobs; αexp=0.0, cflag=true,
 		       max_tfrac_gprecon=1.0, attrib=:focus)
 	
 	ntg=pa.om.ntg
-	nt=pa.om.nt
+	nts=pa.om.nts
 
 	ntgprecon=round(Int,max_tfrac_gprecon*ntg);
 
 	nr=size(gobs,2)
-	sprecon=ones(nt)
+	sprecon=ones(nts)
 	gprecon=ones(ntg, nr); 
 	gweights=ones(ntg, nr); 
 	if(attrib==:windows)
@@ -267,6 +242,15 @@ function F!(pa::BD,	x::AbstractVector{Float64}  )
 	end
 end
 
+"""
+To define linear operator
+"""
+function F!(y, x, pa::BD)
+	F!(pa,x)
+	for i in eachindex(y)
+		y[i]=pa.optm.cal.d[i]
+	end
+end
 
 """
 Apply Fadj to 
@@ -296,7 +280,6 @@ function Fadj!(pa::BD, x, storage, dcal)
 
 	else(pa.attrib_inv == :g)
 		Conv.mod!(pa.optm.cal, :g, g=pa.optm.dg, d=dcal)
-		copy!(storage, pa.optm.dg) # remove?
 
 		for i in eachindex(storage)
 			if(iszero(pa.gx.precon[i]))
@@ -309,6 +292,23 @@ function Fadj!(pa::BD, x, storage, dcal)
 	end
 	return storage
 end
+
+"""
+To define linear operator
+"""
+function Fadj!(y, x, pa::BD)
+	for i in eachindex(y)
+		pa.optm.ddcal[i]=y[i]
+	end
+	storage=similar(x)
+	println(size(storage))
+	println(size(x))
+	println(size(pa.gx.precon))
+	println(size(pa.optm.dg))
+	Fadj!(pa, x, storage, pa.optm.ddcal)
+	copy!(x, storage)
+end
+
 
 
 function initialize!(pa::BD)
@@ -378,55 +378,36 @@ end
 
 function update_s!(pa::BD, xs)
 	pa.attrib_inv=:s    
-#	if(pa.fourier_constraints_flag)
-#		phase_retrievel!(pa.optm.cal.s, pa.spacse)
-#	end
-	if(pa.fourier_constraints_flag)
-		"""
-		Generalized Gerchberg-Saxton algorithm
-		"""
-		max_roundtrips=1000000
-		max_reroundtrips=1
-		roundtrip_tol=1e-6
-		optim_tols=[1e-6, 1e-6]
-		verbose=false
-
-		ParamAM_func=x->Inversion.ParamAM(x, optim_tols=optim_tols, name="Generalized Gerchberg Saxton",
-				    roundtrip_tol=roundtrip_tol, max_roundtrips=max_roundtrips,
-				    max_reroundtrips=max_reroundtrips,
-				    min_roundtrips=10,
-				    verbose=verbose,
-				    )
-		# create alternating minimization parameters
-		function f1(x)
-			fs = apply_fourier_constraints!(pa)
-			return fs
-		end
-		function f2(x)
-			# err is error before applying support constraints
-			err=support_constraints!(pa.optm.cal.s, pa.sintensity)
-			# data error before updating s
-		#	Conv.mod!(pa.optm.cal, :d) # modify pa.optm.cal.d
-		#	err2 = Misfits.error_squared_euclidean!(nothing, pa.optm.cal.d, pa.optm.obs.d, nothing, norm_flag=true)
-	#		ress = update!(pa, xs, pa.sx.func, pa.sx.grad!)
-#			fs = Optim.minimum(ress)
-			return err
-		end
-		paam=ParamAM_func([f1, f2])
-
-		# do inversion
-		Inversion.go(paam)
-
-	end
 	ress = update!(pa, xs)
 	fs = Optim.minimum(ress)
 	return fs
 end
 
-function apply_fourier_constraints!(pa::BD)
-	copy!(pa.optm.ds, pa.optm.cal.s)
-	f = fourier_constraints!(pa.optm.ds, pa.sintensity)
-	return f
+
+struct BandLimit <: Manifold
 end
 
+function retract!(::BandLimit,x)
+	#=
+	x_to_model!(x, pa) # modify pa.optm.cal.s or pa.optm.cal.g
 
+	pac=pa.optm.cal
+	if(pa.attrib_inv==:g)
+	Conv.pad_truncate!(pac.g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2, 1)
+	A_mul_B!(pac.gfreq, pac.gfftp, pac.gpad)
+
+	nr=pa.om.nr
+	for ir in 1:nr
+		for i in 1:10
+			pac.gfreq[i,ir]=complex(0.0,0.0)
+		end
+	end
+	A_mul_B!(pac.gpad, pac.gifftp, pac.gfreq)
+	Conv.pad_truncate!(pac.g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2, -1)
+	=#
+end
+export retract!
+
+function project_tangent!(::BandLimit,g,x)
+
+end
