@@ -1,3 +1,11 @@
+struct S end
+struct G end
+
+mutable struct FourierConstraints
+	window::Vector{Float64}
+	autocorr_flag::Bool
+end
+
 
 
 """
@@ -44,7 +52,7 @@ function replace!(pa::OptimModel, x, fieldmod::Symbol, field::Symbol)
 		error("error dimension replacing")
 	end
 	# perform modelling :<)
-	Conv.mod!(pao, :d)
+	Conv.mod!(pao, Conv.D())
 end
 
 
@@ -74,7 +82,7 @@ function ObsModel(ntg, nt, nr, nts;
 		obstemp=Conv.P_conv(ssize=[nts], dsize=[nt,nr], gsize=[ntg,nr], slags=[nts-1, 0])
 		copy!(obstemp.g, g)
 		copy!(obstemp.s, s)
-		Conv.mod!(obstemp, :d) # do a convolution to model data
+		Conv.mod!(obstemp, Conv.D()) # do a convolution to model data
 		d=obstemp.d
 	end
 

@@ -237,7 +237,7 @@ function F!(pa::BD,	x::AbstractVector{Float64}  )
 			copy!(pa.gx.last_x, x)
 		end
 
-		Conv.mod!(pa.optm.cal, :d) # modify pa.optm.cal.d
+		Conv.mod!(pa.optm.cal, Conv.D()) # modify pa.optm.cal.d
 		return pa
 	end
 end
@@ -259,7 +259,7 @@ x is not used?
 function Fadj!(pa::BD, x, storage, dcal)
 	storage[:] = 0.
 	if(pa.attrib_inv == :s)
-		Conv.mod!(pa.optm.cal, :s, d=dcal, s=pa.optm.ds)
+		Conv.mod!(pa.optm.cal, Conv.S(), d=dcal, s=pa.optm.ds)
 		for j in 1:size(pa.optm.ds,1)
 			storage[j] = pa.optm.ds[j]
 		end
@@ -279,7 +279,7 @@ function Fadj!(pa::BD, x, storage, dcal)
 		end
 
 	else(pa.attrib_inv == :g)
-		Conv.mod!(pa.optm.cal, :g, g=pa.optm.dg, d=dcal)
+		Conv.mod!(pa.optm.cal, Conv.G(), g=pa.optm.dg, d=dcal)
 
 		for i in eachindex(storage)
 			if(iszero(pa.gx.precon[i]))

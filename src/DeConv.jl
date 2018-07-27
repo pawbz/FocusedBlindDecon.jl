@@ -19,15 +19,12 @@ using CSV
 using DSP.nextfastfft
 using FFTW
 
-export retract!
-export project_gradient!
-export BandLimit
-
 include("DataTypes.jl")
 include("FPR.jl")
 include("Phase.jl")
 include("BD.jl")
 include("IBD.jl")
+include("FBD.jl")
 include("Misfits.jl")
 include("Doppler.jl")
 include("Deterministic.jl")
@@ -133,29 +130,20 @@ end
 
 
 # core algorithm
-function update!(pa, x, 
-		 store_trace::Bool=false, 
-		 extended_trace::Bool=false, 
-	     f_tol::Float64=1e-8, g_tol::Float64=1e-8, x_tol::Float64=1e-30, iterations=2000)
+function update!(pa, x) 
 
 	f =x->func_grad!(nothing, x,  pa) 
 	g! =(storage, x)->func_grad!(storage, x,  pa)
 
-	# initial w to x
+	# put the value from model to x
 	model_to_x!(x, pa)
 
 	"""
 	Unbounded LBFGS inversion, only for testing
 	"""
-	#nlprecon =  GradientDescent(linesearch=LineSearches.Static(alpha=1e-4,scaled=true))
-	#oacc10 = OACCEL(nlprecon=nlprecon, wmax=10)
 	res = optimize(f, g!, x, 
-#		oacc10,
-ConjugateGradient(manifold=BandLimit()),
-		       #BFGS(),
-		       Optim.Options(g_tol = g_tol, f_tol=f_tol, x_tol=x_tol,
-		       iterations = iterations, store_trace = store_trace,
-		       extended_trace=extended_trace, show_trace = false))
+		ConjugateGradient(),
+		Optim.Options(g_tol = 1e-8, iterations = 2000, show_trace = false))
 	pa.verbose && println(res)
 
 	x_to_model!(Optim.minimizer(res), pa)
@@ -245,7 +233,60 @@ end
 
 
 
+function update_window!(paf::FourierConstraints, obs)
+	pac=obs
+	paf=paf
+	Conv.pad!(pac.d, pac.dpad, pac.dlags[1], pac.dlags[2], pac.np2)
+	A_mul_B!(pac.dfreq, pac.dfftp, pac.dpad)
+	for i in eachindex(paf.window)
+		paf.window[i]=complex(0.0,0.0)
+	end
 
+	nr=size(pac.dfreq,2)
+	# stack the spectrum of data
+	for j in 1:nr
+		for i in eachindex(paf.window)
+			paf.window[i] += (abs2(pac.dfreq[i,j]))
+		end
+	end
+
+	normalize!(paf.window)
+	paf.window = 10. * log10.(paf.window)
+
+	# mute frequencies less than -40 dB
+	for i in eachindex(paf.window)
+		if(paf.window[i] ≤ -40)
+			paf.window[i]=0.0
+		else
+			paf.window[i]=1.0
+		end
+	end
+end
+
+function apply_window_s!(s, pac, paf)
+	Conv.pad!(s, pac.spad, pac.slags[1], pac.slags[2], pac.np2)
+	A_mul_B!(pac.sfreq, pac.sfftp, pac.spad)
+	for i in eachindex(pac.sfreq)
+		pac.sfreq[i] *= paf.window[i]
+	end
+	A_mul_B!(pac.spad, pac.sifftp, pac.sfreq)
+	Conv.truncate!(s, pac.spad, pac.slags[1], pac.slags[2], pac.np2)
+end
+
+
+function apply_window_g!(g, pac, paf)
+	Conv.pad!(g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2)
+	A_mul_B!(pac.gfreq, pac.gfftp, pac.gpad)
+	nr=size(pac.gfreq,2)
+	for ir in 1:nr
+		for i in size(pac.gfreq,1)
+			pac.gfreq[i,ir] *= paf.window[i]
+		end
+	end
+	A_mul_B!(pac.gpad, pac.gifftp, pac.gfreq)
+	Conv.truncate!(g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2)
+
+end
 include("Save.jl")
 include("Plots.jl")
 

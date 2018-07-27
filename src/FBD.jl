@@ -27,6 +27,9 @@ end
 
 function fbd!(pa::FBD)
 
+	# initialize
+	DeConv.initialize!(pa.pfibd)
+
 	# start with fibd
 	fibd!(pa.pfibd, STDOUT, α=[Inf,0.0],tol=[1e-8,1e-5])
 

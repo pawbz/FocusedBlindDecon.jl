@@ -11,10 +11,10 @@ mutable struct IBD
 	sx::X
 	sx_attrib::Symbol
 	sx_fix_zero_lag_flag::Bool
-	fourier_constraint_flag::Bool
 	attrib_inv::Symbol
 	verbose::Bool
 	err::DataFrames.DataFrame
+	fc::FourierConstraints
 end
 
 
@@ -68,9 +68,11 @@ function IBD(ntg, nt, nr, nts;
 
 	err=DataFrame(g=[], g_nodecon=[], s=[], d=[], whiteness_obs=[], whiteness_cal=[])
 
+	fc=FourierConstraints(zeros(length(optm.cal.sfreq)), true)
+
 	pa=IBD(om, optm, gx, sx, sx_attrib, sx_fix_zero_lag_flag, 
-	fourier_constraint_flag,
-	:g, verbose, err)
+	:g, verbose, err, fc)
+
 
 	if(sx_fix_zero_lag_flag)
 		if(sx_attrib==:positive)
@@ -103,6 +105,8 @@ function IBD(ntg, nt, nr, nts;
 
 	initialize!(pa)
 	#update_func_grad!(pa)
+
+	update_window!(pa.fc, pa.optm.obs)
 
 	return pa
 	
@@ -139,7 +143,6 @@ function x_to_model!(x, pa::IBD)
 			for i in eachindex(pa.optm.cal.s)
 				pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
 			end
-			pa.sx_fix_zero_lag_flag && (pa.optm.cal.s[pa.om.nt]=1.0) # fix zero lag
 		elseif(pa.sx_attrib==:positive)
 			for i in 1:pa.om.nts-1
 				# put same in positive lags
@@ -148,14 +151,16 @@ function x_to_model!(x, pa::IBD)
 				pa.optm.cal.s[pa.om.nts-i]=x[i+1]*pa.sx.preconI[i+1]
 			end
 			pa.optm.cal.s[pa.om.nts]=x[1]*pa.sx.preconI[1]
-			pa.sx_fix_zero_lag_flag && (pa.optm.cal.s[pa.om.nts]=1.0) # fix zero lag
 		else
 			error("invalid sx_attrib")
 		end
+	#	apply_window_s!(pa.optm.cal.s, pa.optm.cal, pa.fc)
+		pa.sx_fix_zero_lag_flag && (pa.optm.cal.s[pa.om.nts]=1.0) # fix zero lag
 	else(pa.attrib_inv == :g)
 		for i in eachindex(pa.optm.cal.g)
 			pa.optm.cal.g[i]=x[i]*pa.gx.preconI[i]
 		end
+	#	apply_window_g!(pa.optm.cal.g, pa.optm.cal, pa.fc)
 	end
 	return pa
 end
@@ -362,7 +367,7 @@ function F!(pa::IBD,	x::AbstractVector{Float64}  )
 			copy!(pa.gx.last_x, x)
 		end
 
-		Conv.mod!(pa.optm.cal, :d) # modify pa.optm.cal.d
+		Conv.mod!(pa.optm.cal, Conv.D()) # modify pa.optm.cal.d
 		return pa
 	end
 end
@@ -375,7 +380,8 @@ x is not used?
 function Fadj!(pa, x, storage, dcal)
 	storage[:] = 0.
 	if(pa.attrib_inv == :s)
-		Conv.mod!(pa.optm.cal, :s, d=dcal, s=pa.optm.ds)
+		Conv.mod!(pa.optm.cal, Conv.S(), d=dcal, s=pa.optm.ds)
+		#apply_window_s!(pa.optm.ds, pa.optm.cal, pa.fc)
 		if(pa.sx_attrib == :positive)
 			# stacking over +ve and -ve lags
 			for j in 2:pa.om.nts
@@ -407,10 +413,10 @@ function Fadj!(pa, x, storage, dcal)
 		end
 
 
-	else(pa.attrib_inv == :g)
-		Conv.mod!(pa.optm.cal, :g, g=pa.optm.dg, d=dcal)
-		copy!(storage, pa.optm.dg) # remove?
 
+	else(pa.attrib_inv == :g)
+		Conv.mod!(pa.optm.cal, Conv.G(), g=pa.optm.dg, d=dcal)
+		#apply_window_g!(pa.optm.dg, pa.optm.cal, pa.fc)
 		for i in eachindex(storage)
 			if(iszero(pa.gx.precon[i]))
 				storage[i]=0.0
@@ -424,53 +430,54 @@ function Fadj!(pa, x, storage, dcal)
 end
 
 
+"""
+Force real and non negative spectrum for g
+"""
+function weak_autocorr_constraint_g!(g, pac)
+	Conv.pad!(g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2)
+	A_mul_B!(pac.gfreq, pac.gfftp, pac.gpad)
+	ntot=1
+	nr=size(pac.gfreq,2)
+	for ir in 1:nr
+		for i in size(pac.gfreq,1)
+			pac.gfreq[i,ntot]=complex(real(pac.gfreq[i,ntot]),0.0)
+			if(real(pac.gfreq[i,ntot]) < 0.0)
+				pac.gfreq[i,ntot]=complex(0.0,0.0)
+			end
+		end
+		ntot += (nr-ir+1)
+	end
+	A_mul_B!(pac.gpad, pac.gifftp, pac.gfreq)
+	Conv.truncate!(g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2)
+end
+
 function update_g!(pa::IBD, xg)
 	pa.attrib_inv=:g    
-	if(pa.fourier_constraint_flag)
-		pac=pa.optm.cal
-		Conv.pad_truncate!(pac.g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2, 1)
-		A_mul_B!(pac.gfreq, pac.gfftp, pac.gpad)
-
-		ntot=1
-		nr=pa.om.nr
-		for ir in 1:nr
-			for i in size(pac.gfreq,1)
-				pac.gfreq[i,ntot]=complex(real(pac.gfreq[i,ntot]),0.0)
-				if(real(pac.gfreq[i,ntot]) < 0.0)
-					pac.gfreq[i,ntot]=complex(0.0,0.0)
-				end
-			end
-			ntot += (nr-ir+1)
-		end
-
-
-		A_mul_B!(pac.gpad, pac.gifftp, pac.gfreq)
-		Conv.pad_truncate!(pac.g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2, -1)
-	end
-
 	resg = update!(pa, xg)
 	fg = Optim.minimum(resg)
+#	apply_window_g!(pa.optm.cal.g, pa.optm.cal, pa.fc)
 	return fg
+end
+
+"""
+Force real and non negative spectrum for s
+"""
+function weak_autocorr_constraint_s!(s, pac)
+	Conv.pad!(s, pac.spad, pac.slags[1], pac.slags[2], pac.np2)
+	A_mul_B!(pac.sfreq, pac.sfftp, pac.spad)
+	for i in eachindex(pac.sfreq)
+		pac.sfreq[i]=complex(real(pac.sfreq[i]),0.0)
+		if(real(pac.sfreq[i]) < 0.0)
+			pac.sfreq[i]=complex(0.0,0.0)
+		end
+	end
+	A_mul_B!(pac.spad, pac.sifftp, pac.sfreq)
+	Conv.truncate!(s, pac.spad, pac.slags[1], pac.slags[2], pac.np2)
 end
 
 function update_s!(pa::IBD, xs)
 	pa.attrib_inv=:s    
-	if(pa.fourier_constraint_flag)
-		pac=pa.optm.cal
-		Conv.pad_truncate!(pac.s, pac.spad, pac.slags[1], pac.slags[2], pac.np2, 1)
-		A_mul_B!(pac.sfreq, pac.sfftp, pac.spad)
-
-		for i in eachindex(pac.sfreq)
-			pac.sfreq[i]=complex(real(pac.sfreq[i]),0.0)
-			if(real(pac.sfreq[i]) < 0.0)
-				pac.sfreq[i]=complex(0.0,0.0)
-			end
-		end
-
-
-		A_mul_B!(pac.spad, pac.sifftp, pac.sfreq)
-		Conv.pad_truncate!(pac.s, pac.spad, pac.slags[1], pac.slags[2], pac.np2, -1)
-	end
+	#apply_window_s!(pa.optm.ds, pa.optm.cal, pa.fc)
 	ress = update!(pa, xs)
 	fs = Optim.minimum(ress)
 	return fs
