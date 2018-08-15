@@ -31,7 +31,7 @@ function fbd!(pa::FBD)
 	DeConv.initialize!(pa.pfibd)
 
 	# start with fibd
-	fibd!(pa.pfibd, STDOUT, α=[Inf,0.0],tol=[1e-8,1e-5])
+	fibd!(pa.pfibd, stdout, α=[Inf,0.0],tol=[1e-8,1e-5])
 
 	# input g from fibd to fpr
 	gobs = (izero(pa.pfibd.om.g)) ? nothing : pa.pfibd.om.g # choose gobs for nearest receiver or not?
@@ -44,4 +44,22 @@ function fbd!(pa::FBD)
 	# input g from fpr to lsbd
 	copy!(pa.plsbd.optm.cal.g, g)
 
+end
+
+
+
+function simple_problem()
+
+	ntg=30
+	nr=20
+	tfact=20
+	gobs=zeros(ntg, nr)
+	Signals.toy_direct_green!(gobs, c=4.0, bfrac=0.20, afrac=1.0);
+	#Signals.toy_direct_green!(gobs, c=4.0, bfrac=0.4, afrac=1.0);
+	Signals.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=-0.6);
+	#Signals.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=1.0);i
+	nt=ntg*tfact
+	nts=nt-ntg+1;
+	sobs=randn(nts);
+	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs)
 end

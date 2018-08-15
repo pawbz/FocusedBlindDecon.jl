@@ -4,6 +4,7 @@
 
 
 
+#=
 
 
 type Intensity
@@ -79,6 +80,7 @@ function support_constraints!(yout, pa::Intensity)
 	return dist
 end
 
+=#
 
 
 

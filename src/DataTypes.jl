@@ -80,8 +80,8 @@ function ObsModel(ntg, nt, nr, nts;
 	if(d===nothing)
 		(iszero(g) || iszero(s)) && error("need gobs and sobs")
 		obstemp=Conv.P_conv(ssize=[nts], dsize=[nt,nr], gsize=[ntg,nr], slags=[nts-1, 0])
-		copy!(obstemp.g, g)
-		copy!(obstemp.s, s)
+		copyto!(obstemp.g, g)
+		copyto!(obstemp.s, s)
 		Conv.mod!(obstemp, Conv.D()) # do a convolution to model data
 		d=obstemp.d
 	end

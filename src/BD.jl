@@ -202,10 +202,10 @@ function inear(gobs, threshold=1e-6)
 end
 
 
-function bd!(pa::BD, io=STDOUT)
+function bd!(pa::BD, io=stdout)
 
 	if(io===nothing)
-		logfilename=joinpath(pwd(),string("XBD",now(),".log"))
+		logfilename=joinpath(pwd(),string("XBD",Dates.now(),".log"))
 		io=open(logfilename, "a+")
 	end
 
@@ -342,7 +342,7 @@ update pa.err
 print?
 give either cal or calsave?
 """
-function err!(pa::BD, io=STDOUT; cal=pa.optm.cal) 
+function err!(pa::BD, io=stdout; cal=pa.optm.cal) 
 	xg_nodecon=hcat(Conv.xcorr(pa.om.d,Conv.P_xcorr(pa.om.nt, pa.om.nr, cglags=[pa.optm.ntg-1, pa.optm.ntg-1]))...)
 	xgobs=hcat(Conv.xcorr(pa.om.g)...) # compute xcorr with reference g
 	fs = Misfits.error_after_normalized_autocor(cal.s, pa.optm.obs.s)
