@@ -345,7 +345,7 @@ end
 function update_gf!(pa)
 	update_Ow!(pa,pa.wav)
 	gf=real.(pinv(pa.Ow)*pa.dobs)
-	copy!(pa.gf,gf)
+	copyto!(pa.gf,gf)
 	F!(pa)
 
 	return Misfits.error_squared_euclidean!(nothing, real.(pa.dcal), real.(pa.dobs), nothing, norm_flag=true)
@@ -354,7 +354,7 @@ end
 function update_wav!(pa)
 	update_Og!(pa,pa.gf)
 	wav=real.(pinv(pa.Og)*pa.dobs)
-	copy!(pa.wav, wav)
+	copyto!(pa.wav, wav)
 	F!(pa)
 	return Misfits.error_squared_euclidean!(nothing, real.(pa.dcal), real.(pa.dobs), nothing, norm_flag=true)
 

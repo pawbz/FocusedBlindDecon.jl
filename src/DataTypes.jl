@@ -34,9 +34,9 @@ function OptimModel(ntg, nt, nr, nts; fftwflag=FFTW.MEASURE, slags=nothing, dlag
 	cal=deepcopy(obs)
 
 	# initial values are random
-	ds=zeros(cal.s)
-	dg=zeros(cal.g)
-	ddcal=zeros(cal.d)
+	ds=zero(cal.s)
+	dg=zero(cal.g)
+	ddcal=zero(cal.d)
 
 	return OptimModel(ntg, nt, nts, nr, obs, cal, dg, ds, ddcal)
 end
@@ -80,8 +80,8 @@ function ObsModel(ntg, nt, nr, nts;
 	if(d===nothing)
 		(iszero(g) || iszero(s)) && error("need gobs and sobs")
 		obstemp=Conv.P_conv(ssize=[nts], dsize=[nt,nr], gsize=[ntg,nr], slags=[nts-1, 0])
-		copy!(obstemp.g, g)
-		copy!(obstemp.s, s)
+		copyto!(obstemp.g, g)
+		copyto!(obstemp.s, s)
 		Conv.mod!(obstemp, Conv.D()) # do a convolution to model data
 		d=obstemp.d
 	end

@@ -41,7 +41,7 @@ function BD(ntg, nt, nr, nts;
 
 	if(fftwflag==FFTW.PATIENT)
 		# use maximum threads for fft
-		fft_threads &&  (FFTW.set_num_threads(Sys.CPU_CORES))
+		fft_threads &&  (FFTW.set_num_threads(CPU_THREADS))
 	end
 
 	# store observed data
@@ -83,7 +83,7 @@ function BD(ntg, nt, nr, nts;
 	# obs.s <-- sobs
 	replace!(pa.optm, sobs, :obs, :s )
 	# obs.d <-- dobs
-	copy!(pa.optm.obs.d, dobs) #  
+	copyto!(pa.optm.obs.d, dobs) #  
 
 
 	add_precons!(pa, pa.om.g, attrib=gprecon_attrib)
@@ -202,10 +202,10 @@ function inear(gobs, threshold=1e-6)
 end
 
 
-function bd!(pa::BD, io=STDOUT)
+function bd!(pa::BD, io=stdout)
 
 	if(io===nothing)
-		logfilename=joinpath(pwd(),string("XBD",now(),".log"))
+		logfilename=joinpath(pwd(),string("XBD",Dates.now(),".log"))
 		io=open(logfilename, "a+")
 	end
 
@@ -232,9 +232,9 @@ function F!(pa::BD,	x::AbstractVector{Float64}  )
 
 		#pa.verbose && println("updating buffer")
 		if(pa.attrib_inv==:s)
-			copy!(pa.sx.last_x, x)
+			copyto!(pa.sx.last_x, x)
 		elseif(pa.attrib_inv==:g)
-			copy!(pa.gx.last_x, x)
+			copyto!(pa.gx.last_x, x)
 		end
 
 		Conv.mod!(pa.optm.cal, Conv.D()) # modify pa.optm.cal.d
@@ -274,7 +274,7 @@ function Fadj!(pa::BD, x, storage, dcal)
 		end
 		# factor, because s was divided by norm of x
 		if(pa.snorm_flag)
-			copy!(pa.optm.dsnorm, storage)
+			copyto!(pa.optm.dsnorm, storage)
 			Misfits.derivative_vector_magnitude!(storage,pa.optm.dsnorm,x,pa.snormmat)
 		end
 
@@ -306,7 +306,7 @@ function Fadj!(y, x, pa::BD)
 	println(size(pa.gx.precon))
 	println(size(pa.optm.dg))
 	Fadj!(pa, x, storage, pa.optm.ddcal)
-	copy!(x, storage)
+	copyto!(x, storage)
 end
 
 
@@ -342,7 +342,7 @@ update pa.err
 print?
 give either cal or calsave?
 """
-function err!(pa::BD, io=STDOUT; cal=pa.optm.cal) 
+function err!(pa::BD, io=stdout; cal=pa.optm.cal) 
 	xg_nodecon=hcat(Conv.xcorr(pa.om.d,Conv.P_xcorr(pa.om.nt, pa.om.nr, cglags=[pa.optm.ntg-1, pa.optm.ntg-1]))...)
 	xgobs=hcat(Conv.xcorr(pa.om.g)...) # compute xcorr with reference g
 	fs = Misfits.error_after_normalized_autocor(cal.s, pa.optm.obs.s)
@@ -371,15 +371,13 @@ function update_g!(pa::BD, xg)
 #	if(pa.fourier_constraints_flag)
 #		phase_retrievel!(pa.optm.cal.g, pa.gpacse)
 #	end
-	resg = update!(pa, xg)
-	fg = Optim.minimum(resg)
+	fg = update!(pa, xg)
 	return fg
 end
 
 function update_s!(pa::BD, xs)
 	pa.attrib_inv=:s    
-	ress = update!(pa, xs)
-	fs = Optim.minimum(ress)
+	fs = update!(pa, xs)
 	return fs
 end
 

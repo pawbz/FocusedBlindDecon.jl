@@ -16,9 +16,9 @@ mutable struct ParamD{T<:Real,N}
 	dfreq::Array{Complex{T},N}
 	greq::Array{Complex{T},N}
 	sfreq::Array{Complex{T},1}
-	fftplan::Base.DFT.FFTW.rFFTWPlan
-	ifftplan::Base.DFT.ScaledPlan
-	fftplans::Base.DFT.FFTW.rFFTWPlan
+	fftplan::FFTW.rFFTWPlan
+	ifftplan::FFTW.Plan
+	fftplans::FFTW.rFFTWPlan
 	ϵ::T
 end
 
@@ -51,9 +51,9 @@ end
 """
 Convolution that allocates `Param` internally.
 """
-function mod!{T,N}(
+function mod!(
 	   d::AbstractArray{T,N}, 
-	   s::AbstractVector{T}, attrib::Symbol)
+	   s::AbstractVector{T}, attrib::Symbol) where {T,N}
 	ntd=size(d,1)
 	ntg=size(g,1)
 	nts=size(s,1)

@@ -119,7 +119,7 @@ function update!(g::AbstractMatrix{Float64}, w::AbstractMatrix{Float64}, pa::FPR
 		       show_every=250,
 		       extended_trace=extended_trace, show_trace=true))
 	println(res)
-	flush(STDOUT)
+	flush(stdout)
 
 	for i in eachindex(g)
 		g[i]=Optim.minimizer(res)[i]

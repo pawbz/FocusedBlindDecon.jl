@@ -1,23 +1,29 @@
 # blind deconvolution
-#__precompile__()
-
 module DeConv
 
 
 using Inversion
 using Misfits
+using Signals
 using Conv
 using Grid
-using Optim, LineSearches
+using Optim
+using Ipopt
 using RecipesBase
 using DataFrames
 using StatsBase
 using IterativeSolvers
 using LinearMaps
-using JLD
 using CSV
-using DSP.nextfastfft
+using DSP
 using FFTW
+using LinearAlgebra
+using Dates
+
+
+function hello()
+	println("FFFFKKF")
+end
 
 include("DataTypes.jl")
 include("FPR.jl")
@@ -29,10 +35,13 @@ include("Misfits.jl")
 include("Doppler.jl")
 include("Deterministic.jl")
 
+
+
+
 function add_gprecon!(pa, gprecon)
 
-	copy!(pa.gx.precon, gprecon)		
-	copy!(pa.gx.preconI, pa.gx.precon)
+	copyto!(pa.gx.precon, gprecon)		
+	copyto!(pa.gx.preconI, pa.gx.precon)
 	for i in eachindex(gprecon)
 		if(!(iszero(gprecon[i])))
 			pa.gx.preconI[i]=inv(pa.gx.precon[i])
@@ -40,8 +49,8 @@ function add_gprecon!(pa, gprecon)
 	end
 end
 function add_sprecon!(pa, sprecon)
-	copy!(pa.sx.precon, sprecon)
-	copy!(pa.sx.preconI, pa.sx.precon)
+	copyto!(pa.sx.precon, sprecon)
+	copyto!(pa.sx.preconI, pa.sx.precon)
 	for i in eachindex(sprecon)
 		if(!(iszero(sprecon[i])))
 			pa.sx.preconI[i]=inv(pa.sx.precon[i])
@@ -50,7 +59,7 @@ function add_sprecon!(pa, sprecon)
 end
 function add_gweights!(pa, gweights)
 	(gweights===nothing) && (gweights=ones(pa.optm.cal.g))
-	copy!(pa.gx.weights, gweights)
+	copyto!(pa.gx.weights, gweights)
 end
 
 
@@ -120,17 +129,19 @@ function update_func_grad!(pa; goptim=nothing, soptim=nothing, gαvec=nothing, s
 	pa.sx.grad! =  (storage, x) -> paMOs.grad!(storage, x, paMOs)
 
 
-	copy!(pa.optm.cal.s, ssave)
-	copy!(pa.optm.cal.g, gsave)
-	copy!(pa.optm.cal.d,dcalsave)
+	copyto!(pa.optm.cal.s, ssave)
+	copyto!(pa.optm.cal.g, gsave)
+	copyto!(pa.optm.cal.d,dcalsave)
 
 	return pa
 end
 =#
 
+struct Use_Optim end
+struct Use_Ipopt end
 
 # core algorithm
-function update!(pa, x) 
+function update!(pa, x, ::Use_Optim) 
 
 	f =x->func_grad!(nothing, x,  pa) 
 	g! =(storage, x)->func_grad!(storage, x,  pa)
@@ -149,6 +160,45 @@ function update!(pa, x)
 	x_to_model!(Optim.minimizer(res), pa)
 
 	return res
+end
+
+# core algorithm
+function update!(pa, x) 
+	nx=length(x)
+	eval_f=x->func_grad!(nothing, x,  pa) 
+	eval_grad_f=(x, storage)->func_grad!(storage, x,  pa)
+
+	function void_g(x, g) end
+	function void_g_jac(x, mode, rows, cols, values) end
+
+	prob = createProblem(nx, 
+		      fill(-Inf, nx),
+		      fill(Inf, nx),
+		      #Array{Float64}(0), # lower_x
+		      #Array{Float64}(0), # upper_x
+		      0, Array{Float64}(0), Array{Float64}(0), 0, 0,
+			eval_f, void_g, eval_grad_f, void_g_jac, nothing)
+
+	addOption(prob, "hessian_approximation", "limited-memory")
+	addOption(prob, "print_level", 0)
+	#addOption(prob, "derivative_test", "first-order")
+	#addOption(prob, "max_iter", 0)
+
+	# put the value from model to x
+	model_to_x!(x, pa)
+
+	# put initial
+	copyto!(prob.x,x)
+		    
+	res=solveProblem(prob)
+	println("ffff")
+
+	#println(typeof(res), "\tFFFFFFFVVVVV\t", res)
+
+	# take solution out
+	copyto!(x,prob.x)
+
+	return prob.obj_val
 end
 
 
@@ -179,7 +229,7 @@ end
 """
 * re_init_flag :: re-initialize inversions with random input or not?
 """
-function update_all!(pa, io=STDOUT; 
+function update_all!(pa, io=stdout; 
 		     max_roundtrips=100, 
 		     max_reroundtrips=1, 
 		     ParamAM_func=nothing, 
@@ -205,7 +255,7 @@ function update_all!(pa, io=STDOUT;
 	paam=ParamAM_func([f1, f2])
 
 	if(io===nothing)
-		logfilename=joinpath(pwd(),string("XBD",now(),".log"))
+		logfilename=joinpath(pwd(),string("XBD",Dates.now(),".log"))
 		io=open(logfilename, "a+")
 	end
 	Inversion.go(paam, io)  # run alternative minimization
@@ -225,9 +275,9 @@ function update_calsave!(optm::OptimModel, calsave)
 	f1=Misfits.error_squared_euclidean!(nothing, calsave.d, optm.obs.d, nothing, norm_flag=true)
 	f2=Misfits.error_squared_euclidean!(nothing, optm.cal.d, optm.obs.d, nothing, norm_flag=true)
 	if(f2<f1)
-		copy!(calsave.d, optm.cal.d)
-		copy!(calsave.g, optm.cal.g)
-		copy!(calsave.s, optm.cal.s)
+		copyto!(calsave.d, optm.cal.d)
+		copyto!(calsave.g, optm.cal.g)
+		copyto!(calsave.s, optm.cal.s)
 	end
 end
 
@@ -237,7 +287,7 @@ function update_window!(paf::FourierConstraints, obs)
 	pac=obs
 	paf=paf
 	Conv.pad!(pac.d, pac.dpad, pac.dlags[1], pac.dlags[2], pac.np2)
-	A_mul_B!(pac.dfreq, pac.dfftp, pac.dpad)
+	mul!(pac.dfreq, pac.dfftp, pac.dpad)
 	for i in eachindex(paf.window)
 		paf.window[i]=complex(0.0,0.0)
 	end
@@ -265,25 +315,25 @@ end
 
 function apply_window_s!(s, pac, paf)
 	Conv.pad!(s, pac.spad, pac.slags[1], pac.slags[2], pac.np2)
-	A_mul_B!(pac.sfreq, pac.sfftp, pac.spad)
+	mul!(pac.sfreq, pac.sfftp, pac.spad)
 	for i in eachindex(pac.sfreq)
 		pac.sfreq[i] *= paf.window[i]
 	end
-	A_mul_B!(pac.spad, pac.sifftp, pac.sfreq)
+	mul!(pac.spad, pac.sifftp, pac.sfreq)
 	Conv.truncate!(s, pac.spad, pac.slags[1], pac.slags[2], pac.np2)
 end
 
 
 function apply_window_g!(g, pac, paf)
 	Conv.pad!(g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2)
-	A_mul_B!(pac.gfreq, pac.gfftp, pac.gpad)
+	mul!(pac.gfreq, pac.gfftp, pac.gpad)
 	nr=size(pac.gfreq,2)
 	for ir in 1:nr
 		for i in size(pac.gfreq,1)
 			pac.gfreq[i,ir] *= paf.window[i]
 		end
 	end
-	A_mul_B!(pac.gpad, pac.gifftp, pac.gfreq)
+	mul!(pac.gpad, pac.gifftp, pac.gfreq)
 	Conv.truncate!(g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2)
 
 end

@@ -41,7 +41,7 @@ function IBD(ntg, nt, nr, nts;
 	if(fftwflag==FFTW.PATIENT)
 
 		# use maximum threads for fft only for patient
-		fft_threads &&  (FFTW.set_num_threads(Sys.CPU_CORES))
+		fft_threads &&  (FFTW.set_num_threads(CPU_THREADS))
 	end
 
 	# store observed data
@@ -98,10 +98,10 @@ function IBD(ntg, nt, nr, nts;
 	# obs.d <-- dobs
 	dobs=hcat(Conv.xcorr(pa.om.d)...) # do a cross-correlation 
 
-	copy!(pa.optm.obs.d, dobs) # overwrites the forward modelling done in previous steps  
+	copyto!(pa.optm.obs.d, dobs) # overwrites the forward modelling done in previous steps  
 
 	# normalize the observed data to 1.0
-	scale!(pa.optm.obs.d, inv(maximum(pa.optm.obs.d)))
+	rmul!(pa.optm.obs.d, inv(maximum(pa.optm.obs.d)))
 
 	initialize!(pa)
 	#update_func_grad!(pa)
@@ -275,7 +275,7 @@ function whiteness_focusing(pa::IBD, attrib=:obs)
 	return J
 end
 
-function ibd!(pa::IBD, io=STDOUT)
+function ibd!(pa::IBD, io=stdout)
 
 	remove_gprecon!(pa, including_zeros=true)  # remove precon
 	remove_gweights!(pa, including_zeros=true)
@@ -290,10 +290,10 @@ end
 """
 Focused Blind Deconvolution
 """
-function fibd!(pa::IBD, io=STDOUT; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-6])
+function fibd!(pa::IBD, io=stdout; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-6])
 
 	if(io===nothing)
-		logfilename=joinpath(pwd(),string("XFIBD",now(),".log"))
+		logfilename=joinpath(pwd(),string("XFIBD",Dates.now(),".log"))
 		io=open(logfilename, "a+")
 	end
 
@@ -362,9 +362,9 @@ function F!(pa::IBD,	x::AbstractVector{Float64}  )
 
 		#pa.verbose && println("updating buffer")
 		if(pa.attrib_inv==:s)
-			copy!(pa.sx.last_x, x)
+			copyto!(pa.sx.last_x, x)
 		elseif(pa.attrib_inv==:g)
-			copy!(pa.gx.last_x, x)
+			copyto!(pa.gx.last_x, x)
 		end
 
 		Conv.mod!(pa.optm.cal, Conv.D()) # modify pa.optm.cal.d
@@ -453,8 +453,7 @@ end
 
 function update_g!(pa::IBD, xg)
 	pa.attrib_inv=:g    
-	resg = update!(pa, xg)
-	fg = Optim.minimum(resg)
+	fg = update!(pa, xg)
 #	apply_window_g!(pa.optm.cal.g, pa.optm.cal, pa.fc)
 	return fg
 end
@@ -478,8 +477,7 @@ end
 function update_s!(pa::IBD, xs)
 	pa.attrib_inv=:s    
 	#apply_window_s!(pa.optm.ds, pa.optm.cal, pa.fc)
-	ress = update!(pa, xs)
-	fs = Optim.minimum(ress)
+	fs = update!(pa, xs)
 	return fs
 end
 
@@ -488,7 +486,7 @@ end
 """
 The cross-correlated Green's functions and the auto-correlated source signature have to be reconstructed exactly, except for a scaling factor.
 """
-function err!(pa::IBD, io=STDOUT; cal=pa.optm.cal) 
+function err!(pa::IBD, io=stdout; cal=pa.optm.cal) 
 	(fg, b)	= Misfits.error_after_scaling(cal.g, pa.optm.obs.g) # error upto a scalar b
 	(fs, b)	= Misfits.error_after_scaling(cal.s, pa.optm.obs.s) # error upto a scalar b
 	f = Misfits.error_squared_euclidean!(nothing, cal.d, pa.optm.obs.d, nothing, norm_flag=true)
@@ -506,7 +504,7 @@ function err!(pa::IBD, io=STDOUT; cal=pa.optm.cal)
 	push!(pa.err[:g_nodecon],fg_nodecon)
 	write(io,"Interferometric Blind Decon Errors\t\n")
 	write(io,"==================\n")
-	if(io==STDOUT)
+	if(io==stdout)
 		display(pa.err)
 	else
 		write(io, string(pa.err))
