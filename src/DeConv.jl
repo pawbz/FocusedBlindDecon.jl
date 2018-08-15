@@ -1,6 +1,4 @@
 # blind deconvolution
-#__precompile__()
-
 module DeConv
 
 
@@ -22,6 +20,10 @@ using FFTW
 using LinearAlgebra
 using Dates
 
+
+function hello()
+end
+
 include("DataTypes.jl")
 include("FPR.jl")
 include("Phase.jl")
@@ -31,6 +33,7 @@ include("FBD.jl")
 include("Misfits.jl")
 include("Doppler.jl")
 include("Deterministic.jl")
+
 
 
 
@@ -137,7 +140,7 @@ struct Use_Optim end
 struct Use_Ipopt end
 
 # core algorithm
-function update!(pa, x,) 
+function update!(pa, x, ::Use_Optim) 
 
 	f =x->func_grad!(nothing, x,  pa) 
 	g! =(storage, x)->func_grad!(storage, x,  pa)
@@ -156,6 +159,45 @@ function update!(pa, x,)
 	x_to_model!(Optim.minimizer(res), pa)
 
 	return res
+end
+
+# core algorithm
+function update!(pa, x) 
+	nx=length(x)
+	eval_f=x->func_grad!(nothing, x,  pa) 
+	eval_grad_f=(x, storage)->func_grad!(storage, x,  pa)
+
+	function void_g(x, g) end
+	function void_g_jac(x, mode, rows, cols, values) end
+
+	prob = createProblem(nx, 
+		      fill(-Inf, nx),
+		      fill(Inf, nx),
+		      #Array{Float64}(0), # lower_x
+		      #Array{Float64}(0), # upper_x
+		      0, Array{Float64}(0), Array{Float64}(0), 0, 0,
+			eval_f, void_g, eval_grad_f, void_g_jac, nothing)
+
+	addOption(prob, "hessian_approximation", "limited-memory")
+	addOption(prob, "print_level", 0)
+	#addOption(prob, "derivative_test", "first-order")
+	#addOption(prob, "max_iter", 0)
+
+	# put the value from model to x
+	model_to_x!(x, pa)
+
+	# put initial
+	copyto!(prob.x,x)
+		    
+	res=solveProblem(prob)
+	println("ffff")
+
+	#println(typeof(res), "\tFFFFFFFVVVVV\t", res)
+
+	# take solution out
+	copyto!(x,prob.x)
+
+	return prob.obj_val
 end
 
 

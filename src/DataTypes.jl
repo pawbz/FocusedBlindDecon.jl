@@ -34,9 +34,9 @@ function OptimModel(ntg, nt, nr, nts; fftwflag=FFTW.MEASURE, slags=nothing, dlag
 	cal=deepcopy(obs)
 
 	# initial values are random
-	ds=zeros(cal.s)
-	dg=zeros(cal.g)
-	ddcal=zeros(cal.d)
+	ds=zero(cal.s)
+	dg=zero(cal.g)
+	ddcal=zero(cal.d)
 
 	return OptimModel(ntg, nt, nts, nr, obs, cal, dg, ds, ddcal)
 end

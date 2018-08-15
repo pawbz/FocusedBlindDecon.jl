@@ -42,7 +42,7 @@ function fbd!(pa::FBD)
 	fpr!(g,  pa.pfpr, precon=:focus)
 
 	# input g from fpr to lsbd
-	copy!(pa.plsbd.optm.cal.g, g)
+	copyto!(pa.plsbd.optm.cal.g, g)
 
 end
 

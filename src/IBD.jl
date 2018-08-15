@@ -41,7 +41,7 @@ function IBD(ntg, nt, nr, nts;
 	if(fftwflag==FFTW.PATIENT)
 
 		# use maximum threads for fft only for patient
-		fft_threads &&  (FFTW.set_num_threads(Sys.CPU_CORES))
+		fft_threads &&  (FFTW.set_num_threads(CPU_THREADS))
 	end
 
 	# store observed data
@@ -101,7 +101,7 @@ function IBD(ntg, nt, nr, nts;
 	copyto!(pa.optm.obs.d, dobs) # overwrites the forward modelling done in previous steps  
 
 	# normalize the observed data to 1.0
-	scale!(pa.optm.obs.d, inv(maximum(pa.optm.obs.d)))
+	rmul!(pa.optm.obs.d, inv(maximum(pa.optm.obs.d)))
 
 	initialize!(pa)
 	#update_func_grad!(pa)
@@ -453,8 +453,7 @@ end
 
 function update_g!(pa::IBD, xg)
 	pa.attrib_inv=:g    
-	resg = update!(pa, xg)
-	fg = Optim.minimum(resg)
+	fg = update!(pa, xg)
 #	apply_window_g!(pa.optm.cal.g, pa.optm.cal, pa.fc)
 	return fg
 end
@@ -478,8 +477,7 @@ end
 function update_s!(pa::IBD, xs)
 	pa.attrib_inv=:s    
 	#apply_window_s!(pa.optm.ds, pa.optm.cal, pa.fc)
-	ress = update!(pa, xs)
-	fs = Optim.minimum(ress)
+	fs = update!(pa, xs)
 	return fs
 end
 
