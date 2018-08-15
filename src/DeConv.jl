@@ -22,6 +22,7 @@ using Dates
 
 
 function hello()
+	prinln("FFF")
 end
 
 include("DataTypes.jl")
