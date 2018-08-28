@@ -2,12 +2,13 @@
 This file contains routines that are common to both BD and IBD
 =#
 
-function func_grad!(storage, x::AbstractVector{Float64},pa)
+function func_grad!(storage, x::AbstractVector{Float64}, pa, attrib)
+	global to
 
 	# x to pa.optm.cal.s or pa.optm.cal.g 
-	x_to_model!(x, pa)
+	x_to_model!(x, pa, attrib)
 
-	F!(pa, x) # forward
+	@timeit to "F" F!(pa, x, attrib) # forward
 
 	if(storage === nothing)
 		# compute misfit and δdcal
@@ -16,7 +17,7 @@ function func_grad!(storage, x::AbstractVector{Float64},pa)
 	else
 		f = Misfits.error_squared_euclidean!(pa.optm.ddcal, pa.optm.cal.d, 
 				       pa.optm.obs.d, nothing, norm_flag=false)
-		Fadj!(pa, x, storage, pa.optm.ddcal)
+		@timeit to "Fadj" Fadj!(pa, storage, pa.optm.ddcal, attrib)
 	end
 	return f
 

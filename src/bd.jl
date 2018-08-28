@@ -3,7 +3,6 @@
 mutable struct BD
 	om::ObsModel
 	optm::OptimModel
-	calsave::Conv.P_conv{Float64,2,2,1} # save the best result
 	gx::X
 	sx::X
 	snorm_flag::Bool 	# restrict s along a unit circle during optimization
@@ -12,7 +11,8 @@ mutable struct BD
 	attrib_inv::Symbol
 	verbose::Bool
 	err::DataFrames.DataFrame
-	fourier_constraints_flag::Bool
+	opG::LinearMaps.LinearMap{Float64}
+	opS::LinearMaps.LinearMap{Float64}
 end
 
 
@@ -31,7 +31,6 @@ function BD(ntg, nt, nr, nts;
 	       snorm_flag=false,
 	       fft_threads=false,
 	       fftwflag=FFTW.PATIENT,
-	       fourier_constraints_flag=false,
 	       dobs=nothing, gobs=nothing, sobs=nothing, verbose=false, attrib_inv=:g,
 	       ) 
 
@@ -63,15 +62,19 @@ function BD(ntg, nt, nr, nts;
 
 	err=DataFrame(g=[], g_nodecon=[], s=[], d=[], front_load=[], whiteness=[])
 
+	# dummy
+	opG=LinearMap(x->0.0, y->0.0,1,1, ismutating=true)
+	opS=LinearMap(x->0.0, y->0.0,1,1, ismutating=true)
 
-	calsave=deepcopy(optm.cal)
 	pa=BD(
-		om,		optm,		calsave,		gx,		sx,		snorm_flag,
+		om,		optm,			gx,		sx,		snorm_flag,
 		snormmat,		dsnorm,		attrib_inv,		verbose,
-		err,		# trying to penalize the energy in the correlations of g (not in practice),
-		fourier_constraints_flag)
+		err, opG, opS)		# trying to penalize the energy in the correlations of g (not in practice),
 
 
+	# update operators
+	pa.opG=create_operator(pa, G())
+	pa.opS=create_operator(pa, S())
 
 
 	gobs=pa.om.g
@@ -97,35 +100,44 @@ end
 
 
 
-function model_to_x!(x, pa::BD)
-	if(pa.attrib_inv == :s)
-		for i in eachindex(x)
-			x[i]=pa.optm.cal.s[i]*pa.sx.precon[i]
-		end
-	else(pa.attrib_inv == :g)
-		for i in eachindex(x)
-			x[i]=pa.optm.cal.g[i]*pa.gx.precon[i] 		# multiply by gprecon
-		end
+function update_prepare!(pa::BD, ::S)
+end
+function update_prepare!(pa::BD, ::G)
+end
+function update_finalize!(pa::BD, ::S)
+end
+function update_finalize!(pa::BD, ::G)
+end
+
+function model_to_x!(x, pa::BD, ::S)
+	for i in eachindex(x)
+		x[i]=pa.optm.cal.s[i]*pa.sx.precon[i]
 	end
-	return x
+	return nothing
+end
+function model_to_x!(x, pa::BD, ::G)
+	for i in eachindex(x)
+		x[i]=pa.optm.cal.g[i]*pa.gx.precon[i] 		# multiply by gprecon
+	end
+	return nothing
 end
 
 
 
-function x_to_model!(x, pa::BD)
-	if(pa.attrib_inv == :s)
-		for i in eachindex(pa.optm.cal.s)
-			# put same in all receivers
-			pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
-		end
-		if(pa.snorm_flag)
-			xn=vecnorm(x)
-			scale!(pa.optm.cal.s, inv(xn))
-		end
-	else(pa.attrib_inv == :g)
-		for i in eachindex(pa.optm.cal.g)
-			pa.optm.cal.g[i]=x[i]*pa.gx.preconI[i]
-		end
+function x_to_model!(x, pa::BD, ::S)
+	for i in eachindex(pa.optm.cal.s)
+		# put same in all receivers
+		pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
+	end
+	if(pa.snorm_flag)
+		xn=vecnorm(x)
+		scale!(pa.optm.cal.s, inv(xn))
+	end
+	return nothing
+end
+function x_to_model!(x, pa::BD, ::G)
+	for i in eachindex(pa.optm.cal.g)
+		pa.optm.cal.g[i]=x[i]*pa.gx.preconI[i]
 	end
 	return pa
 end
@@ -197,116 +209,81 @@ end
 "return index of closest receiver"
 function inear(gobs, threshold=1e-6)
 	nr=size(gobs,2)
-	ir0=indmin([findfirst(x->abs(x)>threshold, vec(gobs[:,ir])) for ir in 1:nr])
+	ir0=argmin([findfirst(x->abs(x)>threshold, vec(gobs[:,ir])) for ir in 1:nr])
 	return ir0
 end
 
 
-function bd!(pa::BD, io=stdout)
+function bd!(pa::BD, io=stdout; tol=1e-6)
 
 	if(io===nothing)
 		logfilename=joinpath(pwd(),string("XBD",Dates.now(),".log"))
 		io=open(logfilename, "a+")
 	end
 
-	#update_func_grad!(pa,goptim=[:ls], gαvec=[1.]);
-	initialize!(pa)
-	update_all!(pa, io, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=1e-8)
+	update_all!(pa, io, max_reroundtrips=1, max_roundtrips=100000, roundtrip_tol=tol)
 
-	update_calsave!(pa.optm, pa.calsave)
 	err!(pa)
 end
 
-function F!(pa::BD,	x::AbstractVector{Float64}  )
-	if(pa.attrib_inv==:s)
-		compute=(x!=pa.sx.last_x)
-	elseif(pa.attrib_inv==:g)
-		compute=(x!=pa.gx.last_x)
-	else
-		compute=false
-	end
-
+function F!(pa::BD,x::AbstractVector{Float64}, ::S)
+	compute=(x!=pa.sx.last_x)
 	if(compute)
-
-		x_to_model!(x, pa) # modify pa.optm.cal.s or pa.optm.cal.g
-
-		#pa.verbose && println("updating buffer")
-		if(pa.attrib_inv==:s)
-			copyto!(pa.sx.last_x, x)
-		elseif(pa.attrib_inv==:g)
-			copyto!(pa.gx.last_x, x)
-		end
-
+		x_to_model!(x, pa, S()) #
+		copyto!(pa.sx.last_x, x)
 		Conv.mod!(pa.optm.cal, Conv.D()) # modify pa.optm.cal.d
 		return pa
 	end
 end
 
-"""
-To define linear operator
-"""
-function F!(y, x, pa::BD)
-	F!(pa,x)
-	for i in eachindex(y)
-		y[i]=pa.optm.cal.d[i]
+function F!(pa::BD,x::AbstractVector{Float64}, ::G)
+	compute=(x!=pa.gx.last_x)
+	if(compute)
+		x_to_model!(x, pa, G())
+		copyto!(pa.gx.last_x, x)
+		Conv.mod!(pa.optm.cal, Conv.D()) # modify pa.optm.cal.d
+		return pa
 	end
 end
 
+
 """
-Apply Fadj to 
-x is not used?
+Apply Fadj to dcal 
 """
-function Fadj!(pa::BD, x, storage, dcal)
-	storage[:] = 0.
-	if(pa.attrib_inv == :s)
-		Conv.mod!(pa.optm.cal, Conv.S(), d=dcal, s=pa.optm.ds)
-		for j in 1:size(pa.optm.ds,1)
-			storage[j] = pa.optm.ds[j]
-		end
+function Fadj!(pa::BD, storage, dcal, ::S)
+	fill!(storage, 0.0)
+	Conv.mod!(pa.optm.cal, Conv.S(), d=dcal, s=pa.optm.ds)
+	for j in 1:size(pa.optm.ds,1)
+		storage[j] = pa.optm.ds[j]
+	end
 
-		# apply precon
-		for i in eachindex(storage)
-			if(iszero(pa.sx.precon[i]))
-				storage[i]=0.0
-			else
-				storage[i] = storage[i]*pa.sx.preconI[i]
-			end
+	# apply precon
+	for i in eachindex(storage)
+		if(iszero(pa.sx.precon[i]))
+			storage[i]=0.0
+		else
+			storage[i] = storage[i]*pa.sx.preconI[i]
 		end
-		# factor, because s was divided by norm of x
-		if(pa.snorm_flag)
-			copyto!(pa.optm.dsnorm, storage)
-			Misfits.derivative_vector_magnitude!(storage,pa.optm.dsnorm,x,pa.snormmat)
-		end
-
-	else(pa.attrib_inv == :g)
-		Conv.mod!(pa.optm.cal, Conv.G(), g=pa.optm.dg, d=dcal)
-
-		for i in eachindex(storage)
-			if(iszero(pa.gx.precon[i]))
-				storage[i]=0.0
-			else
-				storage[i]=pa.optm.dg[i]/pa.gx.precon[i]
-			end
-		end
-
+	end
+	# factor, because s was divided by norm of x
+	if(pa.snorm_flag)
+		copyto!(pa.optm.dsnorm, storage)
+		Misfits.derivative_vector_magnitude!(storage,pa.optm.dsnorm,x,pa.snormmat)
 	end
 	return storage
 end
 
-"""
-To define linear operator
-"""
-function Fadj!(y, x, pa::BD)
-	for i in eachindex(y)
-		pa.optm.ddcal[i]=y[i]
+function Fadj!(pa::BD, storage, dcal, ::G)
+	Conv.mod!(pa.optm.cal, Conv.G(), g=pa.optm.dg, d=dcal)
+
+	for i in eachindex(storage)
+		if(iszero(pa.gx.precon[i]))
+			storage[i]=0.0
+		else
+			storage[i]=pa.optm.dg[i]/pa.gx.precon[i]
+		end
 	end
-	storage=similar(x)
-	println(size(storage))
-	println(size(x))
-	println(size(pa.gx.precon))
-	println(size(pa.optm.dg))
-	Fadj!(pa, x, storage, pa.optm.ddcal)
-	copyto!(x, storage)
+	return storage
 end
 
 
@@ -321,14 +298,6 @@ function initialize!(pa::BD)
 		x=(pa.gx.precon[i]≠0.0) ? randn() : 0.0
 		pa.optm.cal.g[i]=x
 	end
-	if(pa.fourier_constraints_flag)
-		#apply_fourier_constraints!(pa)
-		phase_retrievel!(pa.optm.cal.g, pa.gpacse, pa.gx.precon)
-		remove_gprecon!(pa, including_zeros=true)
-		phase_retrievel!(pa.optm.cal.g, pa.gpacse)
-		phase_retrievel!(pa.optm.cal.s, pa.spacse)
-	end
-
 end
 
 
@@ -340,7 +309,7 @@ end
 compute errors
 update pa.err
 print?
-give either cal or calsave?
+give either cal 
 """
 function err!(pa::BD, io=stdout; cal=pa.optm.cal) 
 	xg_nodecon=hcat(Conv.xcorr(pa.om.d,Conv.P_xcorr(pa.om.nt, pa.om.nr, cglags=[pa.optm.ntg-1, pa.optm.ntg-1]))...)
@@ -368,9 +337,6 @@ end
 
 function update_g!(pa::BD, xg)
 	pa.attrib_inv=:g    
-#	if(pa.fourier_constraints_flag)
-#		phase_retrievel!(pa.optm.cal.g, pa.gpacse)
-#	end
 	fg = update!(pa, xg)
 	return fg
 end
@@ -382,6 +348,9 @@ function update_s!(pa::BD, xs)
 end
 
 
+
+
+#=
 struct BandLimit <: Manifold
 end
 
@@ -409,3 +378,4 @@ export retract!
 function project_tangent!(::BandLimit,g,x)
 
 end
+=#

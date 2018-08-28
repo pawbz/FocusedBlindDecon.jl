@@ -21,6 +21,7 @@ mutable struct OptimModel
 	dg::Array{Float64,2} # store gradients
 	ds::Vector{Float64} # store gradients
 	ddcal::Array{Float64,2}
+	dvec::Vector{Float64}
 end
 	
 
@@ -37,8 +38,9 @@ function OptimModel(ntg, nt, nr, nts; fftwflag=FFTW.MEASURE, slags=nothing, dlag
 	ds=zero(cal.s)
 	dg=zero(cal.g)
 	ddcal=zero(cal.d)
+	dvec=zeros(nt*nr) # if data needs to be stored as vector 
 
-	return OptimModel(ntg, nt, nts, nr, obs, cal, dg, ds, ddcal)
+	return OptimModel(ntg, nt, nts, nr, obs, cal, dg, ds, ddcal, dvec)
 end
 
 function replace!(pa::OptimModel, x, fieldmod::Symbol, field::Symbol)

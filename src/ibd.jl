@@ -14,7 +14,8 @@ mutable struct IBD
 	attrib_inv::Symbol
 	verbose::Bool
 	err::DataFrames.DataFrame
-	fc::FourierConstraints
+	opG::LinearMaps.LinearMap{Float64}
+	opS::LinearMaps.LinearMap{Float64}
 end
 
 
@@ -27,7 +28,6 @@ function IBD(ntg, nt, nr, nts;
 	       fftwflag=FFTW.PATIENT,
 	       sx_attrib=:positive,
 	       sx_fix_zero_lag_flag=true,
-	       fourier_constraint_flag=false,
 	       dobs=nothing, 
 	       gobs=nothing, 
 	       sobs=nothing, 
@@ -58,22 +58,37 @@ function IBD(ntg, nt, nr, nts;
 	gx=X(length(optm.cal.g))
 
 	if(sx_attrib==:positive)
-		sx=X(nts)
-		sx.x[1]=1.0
+		if(sx_fix_zero_lag_flag)
+			sx=X(nts-1) # not including zero lag
+		else
+			sx=X(nts) 
+		end
 	elseif(sx_attrib==:all)
-		sx=X(length(optm.cal.s))
+		if(sx_fix_zero_lag_flag)
+			sx=X(length(optm.cal.s)-1) # not including zero lag
+		else
+			sx=X(length(optm.cal.s))
+		end
 	else
 		error("invalid sx_attrib")
 	end
 
 	err=DataFrame(g=[], g_nodecon=[], s=[], d=[], whiteness_obs=[], whiteness_cal=[])
 
-	fc=FourierConstraints(zeros(length(optm.cal.sfreq)), true)
+
+	# dummy
+	opG=LinearMap(x->0.0, y->0.0,1,1, ismutating=true)
+	opS=LinearMap(x->0.0, y->0.0,1,1, ismutating=true)
 
 	pa=IBD(om, optm, gx, sx, sx_attrib, sx_fix_zero_lag_flag, 
-	:g, verbose, err, fc)
+	:g, verbose, err, opG, opS)
 
 
+	# update operators
+	pa.opG=create_operator(pa, G())
+	pa.opS=create_operator(pa, S())
+
+	#=
 	if(sx_fix_zero_lag_flag)
 		if(sx_attrib==:positive)
 			# adjust sprecon
@@ -86,7 +101,7 @@ function IBD(ntg, nt, nr, nts;
 			error("invalid sx_attrib")
 		end
 	end
-
+	=#
  
 	gobs=hcat(Conv.xcorr(pa.om.g)...)
 	sobs=hcat(Conv.xcorr(pa.om.s)...)
@@ -104,46 +119,104 @@ function IBD(ntg, nt, nr, nts;
 	rmul!(pa.optm.obs.d, inv(maximum(pa.optm.obs.d)))
 
 	initialize!(pa)
-	#update_func_grad!(pa)
-
-	update_window!(pa.fc, pa.optm.obs)
 
 	return pa
 	
 end
 
 
-function model_to_x!(x, pa::IBD)
-	if(pa.attrib_inv == :s)
-		if(pa.sx_attrib==:all)
+function update_prepare!(pa::IBD, ::S)
+	if(pa.sx_fix_zero_lag_flag)
+		for ir in 1:pa.optm.nr
+			for it in 1:pa.optm.ntg
+				pa.optm.obs.d[pa.om.nt-pa.om.ntg+it,ir] -= pa.optm.cal.g[it,ir]
+			end
+		end
+	end
+end
+function update_prepare!(pa::IBD, ::G)
+	if(pa.sx_fix_zero_lag_flag)
+		pa.optm.cal.s[pa.om.nts]=1.0
+	end
+end
+function update_finalize!(pa::IBD, ::S)
+	if(pa.sx_fix_zero_lag_flag)
+		for ir in 1:pa.optm.nr
+			for it in 1:pa.optm.ntg
+				pa.optm.obs.d[pa.om.nt-pa.om.ntg+it,ir] += pa.optm.cal.g[it,ir]
+			end
+		end
+	end
+end
+function update_finalize!(pa::IBD, ::G)
+	if(pa.sx_fix_zero_lag_flag)
+		pa.optm.cal.s[pa.om.nts]=0.0
+	end
+end
+
+function model_to_x!(x, pa::IBD, ::S)
+	if(pa.sx_attrib==:all)
+		if(pa.sx_fix_zero_lag_flag)
+			nts=pa.om.nts
+			for i in 1:nts-1
+				x[i]=pa.optm.cal.s[i]*pa.sx.precon[i] 
+			end
+			for i in nts+1:2*nts-1
+				x[i-1]=pa.optm.cal.s[i]*pa.sx.precon[i-1] 
+			end
+		else
 			for i in eachindex(x)
 				x[i]=pa.optm.cal.s[i]*pa.sx.precon[i] 
 			end
-			pa.sx_fix_zero_lag_flag && (x[pa.om.nts]=1.0) # zero lag will be fixed
-		elseif(pa.sx_attrib==:positive)
+		end
+	elseif(pa.sx_attrib==:positive)
+		if(pa.sx_fix_zero_lag_flag)
+			for i in eachindex(x)
+				x[i]=pa.optm.cal.s[pa.om.nts+i]*pa.sx.precon[i] # just take positive lags
+			end
+		else
 			for i in eachindex(x)
 				x[i]=pa.optm.cal.s[i+pa.om.nts-1]*pa.sx.precon[i] # just take positive lags
 			end
-			pa.sx_fix_zero_lag_flag && (x[1]=1.0) # zero lag will be fixed
-		else	
-			error("invalid sx_attrib")
 		end
-	else(pa.attrib_inv == :g)
-		for i in eachindex(x)
-			x[i]=pa.optm.cal.g[i]*pa.gx.precon[i] 		# multiply by gprecon
-		end
+	else	
+		error("invalid sx_attrib")
+	end
+	return nothing
+end
+function model_to_x!(x, pa::IBD, ::G)
+	for i in eachindex(x)
+		x[i]=pa.optm.cal.g[i]*pa.gx.precon[i] 		# multiply by gprecon
 	end
 	return nothing
 end
 
 
-function x_to_model!(x, pa::IBD)
-	if(pa.attrib_inv == :s)
-		if(pa.sx_attrib==:all)
+function x_to_model!(x, pa::IBD, ::S)
+	if(pa.sx_attrib==:all)
+		if(pa.sx_fix_zero_lag_flag)
+			for i in 1:pa.om.nts-1
+				pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
+			end
+			for i in pa.om.nts+1:2*pa.om.nts-1
+				pa.optm.cal.s[i]=x[i-1]*pa.sx.preconI[i-1]
+			end
+			pa.optm.cal.s[pa.om.nts]=0.0
+		else
 			for i in eachindex(pa.optm.cal.s)
 				pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
 			end
-		elseif(pa.sx_attrib==:positive)
+		end
+	elseif(pa.sx_attrib==:positive)
+		if(pa.sx_fix_zero_lag_flag)
+			for i in 1:pa.om.nts-1
+				# put same in positive lags
+				pa.optm.cal.s[pa.om.nts+i]=x[i]*pa.sx.preconI[i]
+				# put same in negative lags
+				pa.optm.cal.s[pa.om.nts-i]=x[i]*pa.sx.preconI[i]
+			end
+			pa.optm.cal.s[pa.om.nts]=0.0
+		else
 			for i in 1:pa.om.nts-1
 				# put same in positive lags
 				pa.optm.cal.s[pa.om.nts+i]=x[i+1]*pa.sx.preconI[i+1]
@@ -151,19 +224,20 @@ function x_to_model!(x, pa::IBD)
 				pa.optm.cal.s[pa.om.nts-i]=x[i+1]*pa.sx.preconI[i+1]
 			end
 			pa.optm.cal.s[pa.om.nts]=x[1]*pa.sx.preconI[1]
-		else
-			error("invalid sx_attrib")
 		end
-	#	apply_window_s!(pa.optm.cal.s, pa.optm.cal, pa.fc)
-		pa.sx_fix_zero_lag_flag && (pa.optm.cal.s[pa.om.nts]=1.0) # fix zero lag
-	else(pa.attrib_inv == :g)
-		for i in eachindex(pa.optm.cal.g)
-			pa.optm.cal.g[i]=x[i]*pa.gx.preconI[i]
-		end
-	#	apply_window_g!(pa.optm.cal.g, pa.optm.cal, pa.fc)
+	else
+		error("invalid sx_attrib")
 	end
 	return pa
 end
+
+function x_to_model!(x, pa::IBD, ::G)
+	for i in eachindex(pa.optm.cal.g)
+		pa.optm.cal.g[i]=x[i]*pa.gx.preconI[i]
+	end
+	return pa
+end
+
 
 """
 Zero out elements of g_ii, depending on nlags
@@ -290,15 +364,15 @@ end
 """
 Focused Blind Deconvolution
 """
-function fibd!(pa::IBD, io=stdout; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-6])
+function fibd!(pa::IBD, io=stdout; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-3])
 
 	if(io===nothing)
 		logfilename=joinpath(pwd(),string("XFIBD",Dates.now(),".log"))
 		io=open(logfilename, "a+")
 	end
 
-	updates = x -> update_all!(pa, io,                   
-				    max_reroundtrips=1, max_roundtrips=100000, 
+	updates = (x,y) -> update_all!(pa, io,                   
+				    max_reroundtrips=1, max_roundtrips=y, 
 				    roundtrip_tol=x, verbose=true)
 
 	add_focusing_gweights!(pa) # adds weights
@@ -309,7 +383,7 @@ function fibd!(pa::IBD, io=stdout; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-6]
 			focus!(pa)
 			add_focusing_gprecon!(pa) # adds precon
 			#update_func_grad!(pa,goptim=[:ls,], gαvec=[1.]); 
-			updates(tol[iα])
+			updates(tol[iα], 10000000)
 			#add_autocorr_gprecon!(pa) # adds precon
 			#updates(tol[iα])
 			remove_gprecon!(pa, including_zeros=true)  # remove precon
@@ -317,7 +391,7 @@ function fibd!(pa::IBD, io=stdout; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-6]
 			remove_gprecon!(pa, including_zeros=true)  # remove precon
 			remove_gweights!(pa, including_zeros=true)
 			#update_func_grad!(pa,goptim=[:ls,], gαvec=[1.]); 
-			updates(tol[iα])
+			updates(tol[iα], 500)
 		else
 			error("not functional for arbitary alpha")
 			remove_gprecon!(pa, including_zeros=true)  # remove precon
@@ -335,7 +409,7 @@ function initialize!(pa::IBD, all_zero=false)
 	for i in eachindex(pa.optm.cal.s)
 		pa.optm.cal.s[i]=0.0 # +ve lags and -ve lags
 	end
-	pa.optm.cal.s[pa.om.nts]=1.0 # initialize zero lag to one
+#	pa.optm.cal.s[pa.om.nts]=1.0 # initialize zero lag to one
 	if(all_zero)
 		pa.optm.cal.g[:]=0.0
 	else
@@ -347,88 +421,88 @@ function initialize!(pa::IBD, all_zero=false)
 end
 
 
-function F!(pa::IBD,	x::AbstractVector{Float64}  )
-	if(pa.attrib_inv==:s)
-		compute=(x!=pa.sx.last_x)
-	elseif(pa.attrib_inv==:g)
-		compute=(x!=pa.gx.last_x)
-	else
-		compute=false
-	end
-
+function F!(pa::IBD,	x::AbstractVector{Float64}, ::S)
+	compute=(x!=pa.sx.last_x)
 	if(compute)
+		x_to_model!(x, pa, S()) # modify pa.optm.cal.s 
+		copyto!(pa.sx.last_x, x)
+		Conv.mod!(pa.optm.cal, Conv.D()) # modify pa.optm.cal.d
+		return pa
+	end
+end
 
-		x_to_model!(x, pa) # modify pa.optm.cal.s or pa.optm.cal.g
-
-		#pa.verbose && println("updating buffer")
-		if(pa.attrib_inv==:s)
-			copyto!(pa.sx.last_x, x)
-		elseif(pa.attrib_inv==:g)
-			copyto!(pa.gx.last_x, x)
-		end
-
+function F!(pa::IBD,	x::AbstractVector{Float64}, ::G)
+	compute=(x!=pa.gx.last_x)
+	if(compute)
+		x_to_model!(x, pa, G()) # modify pa.optm.cal.g
+		copyto!(pa.gx.last_x, x)
 		Conv.mod!(pa.optm.cal, Conv.D()) # modify pa.optm.cal.d
 		return pa
 	end
 end
 
 
+
 """
-Apply Fadj to 
-x is not used?
+Apply Fadj to dcal and return storage
 """
-function Fadj!(pa, x, storage, dcal)
-	storage[:] = 0.
-	if(pa.attrib_inv == :s)
-		Conv.mod!(pa.optm.cal, Conv.S(), d=dcal, s=pa.optm.ds)
-		#apply_window_s!(pa.optm.ds, pa.optm.cal, pa.fc)
-		if(pa.sx_attrib == :positive)
-			# stacking over +ve and -ve lags
+function Fadj!(pa::IBD, storage, dcal, ::S)
+	fill!(storage, 0.)
+	Conv.mod!(pa.optm.cal, Conv.S(), d=dcal, s=pa.optm.ds)
+	if(pa.sx_attrib == :positive)
+		# stacking over +ve and -ve lags
+		if(pa.sx_fix_zero_lag_flag)
+			for j in 2:pa.om.nts
+				storage[j-1] += pa.optm.ds[pa.om.nts-j+1] # -ve lags
+				storage[j-1] += pa.optm.ds[pa.om.nts+j-1] # +ve lags
+			end
+		else
 			for j in 2:pa.om.nts
 				storage[j] += pa.optm.ds[pa.om.nts-j+1] # -ve lags
 				storage[j] += pa.optm.ds[pa.om.nts+j-1] # +ve lags
 			end
-			if(pa.sx_fix_zero_lag_flag)
-				storage[1]=0.0
-			else
-				storage[1]=pa.optm.ds[pa.om.nts]
+			storage[1]=pa.optm.ds[pa.om.nts]
+		end
+	elseif(pa.sx_attrib == :all)
+		if(pa.sx_fix_zero_lag_flag)
+			nts=pa.om.nts
+			for i in 1:nts-1
+				storage[i] = pa.optm.ds[i] #
 			end
-		elseif(pa.sx_attrib == :all)
+			for i in nts+1:2*nts-1
+				storage[i-1] = pa.optm.ds[i] #
+			end
+		else
 			for i in eachindex(storage)
 				storage[i] = pa.optm.ds[i] #
 			end
-			if(pa.sx_fix_zero_lag_flag)
-				storage[pa.om.nts]=0.0
-			end
+		end
+	else
+		error("invalid attrib" )
+	end
+	# apply precon
+	for i in eachindex(storage)
+		if(iszero(pa.sx.precon[i]))
+			storage[i]=0.0
 		else
-			error("invalid attrib" )
+			storage[i] = storage[i]*pa.sx.preconI[i]
 		end
-		# apply precon
-		for i in eachindex(storage)
-			if(iszero(pa.sx.precon[i]))
-				storage[i]=0.0
-			else
-				storage[i] = storage[i]*pa.sx.preconI[i]
-			end
+	end
+end
+
+function Fadj!(pa::IBD, storage, dcal, ::G)
+	Conv.mod!(pa.optm.cal, Conv.G(), g=pa.optm.dg, d=dcal)
+	for i in eachindex(storage)
+		if(iszero(pa.gx.precon[i]))
+			storage[i]=0.0
+		else
+			storage[i]=pa.optm.dg[i]/pa.gx.precon[i]
 		end
-
-
-
-	else(pa.attrib_inv == :g)
-		Conv.mod!(pa.optm.cal, Conv.G(), g=pa.optm.dg, d=dcal)
-		#apply_window_g!(pa.optm.dg, pa.optm.cal, pa.fc)
-		for i in eachindex(storage)
-			if(iszero(pa.gx.precon[i]))
-				storage[i]=0.0
-			else
-				storage[i]=pa.optm.dg[i]/pa.gx.precon[i]
-			end
-		end
-
 	end
 	return storage
 end
 
+#=
 
 """
 Force real and non negative spectrum for g
@@ -451,12 +525,6 @@ function weak_autocorr_constraint_g!(g, pac)
 	Conv.truncate!(g, pac.gpad, pac.glags[1], pac.glags[2], pac.np2)
 end
 
-function update_g!(pa::IBD, xg)
-	pa.attrib_inv=:g    
-	fg = update!(pa, xg)
-#	apply_window_g!(pa.optm.cal.g, pa.optm.cal, pa.fc)
-	return fg
-end
 
 """
 Force real and non negative spectrum for s
@@ -473,14 +541,7 @@ function weak_autocorr_constraint_s!(s, pac)
 	A_mul_B!(pac.spad, pac.sifftp, pac.sfreq)
 	Conv.truncate!(s, pac.spad, pac.slags[1], pac.slags[2], pac.np2)
 end
-
-function update_s!(pa::IBD, xs)
-	pa.attrib_inv=:s    
-	#apply_window_s!(pa.optm.ds, pa.optm.cal, pa.fc)
-	fs = update!(pa, xs)
-	return fs
-end
-
+=#
 
 
 """

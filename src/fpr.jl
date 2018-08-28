@@ -23,7 +23,7 @@ function update_cymat!(pa::FPR; cymat=nothing, cy=nothing, gobs=nothing, nearest
 	else
 		ine=nearest_receiver
 	end
-
+	nr=size(pa.g,2)
 	if(cy===nothing)
 		cyshifted=Conv.cgmat(cymat,nr,cg_indices=circshift(1:nr, -ine+1))
 	else
@@ -31,6 +31,14 @@ function update_cymat!(pa::FPR; cymat=nothing, cy=nothing, gobs=nothing, nearest
 		cyshifted=Conv.cgmat(cymattemp,nr,cg_indices=circshift(1:nr, -ine+1))
 	end
 
+
+	# put the shifted cy in pa
+	for i in eachindex(pa.p_misfit_xcorr.cy)
+		copyto!(pa.p_misfit_xcorr.cy[i], cyshifted[i])
+	end
+	copyto!(pa.p_misfit_xcorr_focus.cy[1], cyshifted[1])
+
+	return pa
 end
 
 function FPR(nt::Int, nr::Int; 
@@ -61,10 +69,7 @@ end
 Update `g`, whereever w is non zero
 """
 function update!(g::AbstractMatrix{Float64}, w::AbstractMatrix{Float64}, pa::FPR;
-		 focus_flag=false,
-		 store_trace::Bool=false, 
-		 extended_trace::Bool=false, 
-	         f_tol::Float64=1e-8, g_tol::Float64=1e-8, x_tol::Float64=1e-30)
+		 focus_flag=false)
 
 	if(focus_flag)
 		pax=pa.p_misfit_xcorr_focus
@@ -113,11 +118,9 @@ function update!(g::AbstractMatrix{Float64}, w::AbstractMatrix{Float64}, pa::FPR
 	res = optimize(xx->fg!(nothing, xx, pa), (storage, xx)->fg!(storage, xx, pa), 
 		x, 
 		ConjugateGradient(),
-		#BFGS(),
-		       Optim.Options(g_tol = g_tol, f_tol=f_tol, x_tol=x_tol,
-		       iterations = 3000, store_trace = store_trace,
-		       show_every=250,
-		       extended_trace=extended_trace, show_trace=true))
+		Optim.Options(iterations = 10000, g_tol=1e-4,
+			show_every=250,
+		       show_trace=true))
 	println(res)
 	flush(stdout)
 
