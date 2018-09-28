@@ -1,18 +1,18 @@
 
 
-mutable struct BD
-	om::ObsModel
-	optm::OptimModel
-	gx::X
-	sx::X
+mutable struct BD{T}
+	om::ObsModel{T}
+	optm::OptimModel{T}
+	gx::X{T}
+	sx::X{T}
 	snorm_flag::Bool 	# restrict s along a unit circle during optimization
-	snormmat::Matrix{Float64}            # stored outer product of s
-	dsnorm::Vector{Float64}		# gradient w.r.t. normalized selet
+	snormmat::Matrix{T}            # stored outer product of s
+	dsnorm::Vector{T}		# gradient w.r.t. normalized selet
 	attrib_inv::Symbol
 	verbose::Bool
 	err::DataFrames.DataFrame
-	opG::LinearMaps.LinearMap{Float64}
-	opS::LinearMaps.LinearMap{Float64}
+	opG::LinearMaps.LinearMap{T}
+	opS::LinearMaps.LinearMap{T}
 end
 
 
@@ -33,38 +33,45 @@ function BD(ntg, nt, nr, nts;
 	       fftwflag=FFTW.PATIENT,
 	       dobs=nothing, gobs=nothing, sobs=nothing, verbose=false, attrib_inv=:g,
 	       ) 
+	# determine type of IBD
+	if(!(dobs===nothing))
+		T=eltype(dobs)
+	else
+		T1=eltype(sobs)
+		T2=eltype(gobs)
+		(T1≠T2) ? error("type difference") : (T=T1)
+	end
+
 
 	if(ntg+nts-1 ≠ nt)
 		error("invalid sizes for convolutional model")
 	end
 
-	if(fftwflag==FFTW.PATIENT)
-		# use maximum threads for fft
-		fft_threads &&  (FFTW.set_num_threads(CPU_THREADS))
-	end
+	# use maximum threads for fft
+	fft_threads &&  (FFTW.set_num_threads(Sys.CPU_THREADS))
 
 	# store observed data
-	om=ObsModel(ntg, nt, nr, nts, d=dobs, g=gobs, s=sobs)
+	om=ObsModel(ntg, nt, nr, nts, T, d=dobs, g=gobs, s=sobs)
 
 	# create models depending on mode
-	optm=OptimModel(ntg, nt, nr, nts, fftwflag=fftwflag, 
+	optm=OptimModel(ntg, nt, nr, nts, T, fftwflag=fftwflag, 
 	slags=[nts-1, 0], 
 	dlags=[nt-1, 0], 
 	glags=[ntg-1, 0], 
 		 )
 
 	# inversion variables allocation
-	gx=X(length(optm.cal.g))
-	sx=X(length(optm.cal.s))
+	gx=X(length(optm.cal.g), T)
+	sx=X(length(optm.cal.s), T)
 
-	snorm_flag ?	(snormmat=zeros(nts, nts)) : (snormmat=zeros(1,1))
-	snorm_flag ?	(dsnorm=zeros(nts)) : (dsnorm=zeros(1))
+	snorm_flag ?	(snormmat=zeros(T,nts, nts)) : (snormmat=zeros(T,1,1))
+	snorm_flag ?	(dsnorm=zeros(T,nts)) : (dsnorm=zeros(T,1))
 
 	err=DataFrame(g=[], g_nodecon=[], s=[], d=[], front_load=[], whiteness=[])
 
 	# dummy
-	opG=LinearMap(x->0.0, y->0.0,1,1, ismutating=true)
-	opS=LinearMap(x->0.0, y->0.0,1,1, ismutating=true)
+	opG=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
+	opS=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 
 	pa=BD(
 		om,		optm,			gx,		sx,		snorm_flag,
@@ -226,17 +233,17 @@ function bd!(pa::BD, io=stdout; tol=1e-6)
 	err!(pa)
 end
 
-function F!(pa::BD,x::AbstractVector{Float64}, ::S)
+function F!(pa::BD,x::AbstractVector, attrib::S)
 	compute=(x!=pa.sx.last_x)
 	if(compute)
-		x_to_model!(x, pa, S()) #
+		x_to_model!(x, pa, attrib) #
 		copyto!(pa.sx.last_x, x)
 		Conv.mod!(pa.optm.cal, Conv.D()) # modify pa.optm.cal.d
 		return pa
 	end
 end
 
-function F!(pa::BD,x::AbstractVector{Float64}, ::G)
+function F!(pa::BD,x::AbstractVector, ::G)
 	compute=(x!=pa.gx.last_x)
 	if(compute)
 		x_to_model!(x, pa, G())

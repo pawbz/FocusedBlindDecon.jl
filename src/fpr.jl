@@ -4,11 +4,11 @@ Focused Phase Retrieval
 
 =#
 
-mutable struct FPR
-	p_misfit_xcorr::Conv.P_misfit_xcorr
-	p_misfit_xcorr_focus::Conv.P_misfit_xcorr
-	g::Matrix{Float64}
-	dg::Matrix{Float64}
+mutable struct FPR{T}
+	p_misfit_xcorr::Conv.P_misfit_xcorr{T}
+	p_misfit_xcorr_focus::Conv.P_misfit_xcorr{T}
+	g::Matrix{T}
+	dg::Matrix{T}
 end
 
 function update_cymat!(pa::FPR; cymat=nothing, cy=nothing, gobs=nothing, nearest_receiver=nothing)
@@ -68,7 +68,7 @@ end
 """
 Update `g`, whereever w is non zero
 """
-function update!(g::AbstractMatrix{Float64}, w::AbstractMatrix{Float64}, pa::FPR;
+function update!(g::AbstractMatrix, w::AbstractMatrix, pa::FPR;
 		 focus_flag=false)
 
 	if(focus_flag)
@@ -132,13 +132,19 @@ end
 
 """
 """
-function fpr!(g::AbstractMatrix{Float64}, pa::FPR; precon=:focus)
+function fpr!(g::AbstractMatrix, pa::FPR, io=stdout; precon=:focus)
+
+	if(io===nothing)
+		logfilename=joinpath(pwd(),string("XFPR",Dates.now(),".log"))
+		io=open(logfilename, "a+")
+	end
+
 	ine=1;
 	if(precon==:focus)
-		println("Phase Retrieval with Focusing Constraint")  
-		println("========================================")  
+		write(io, "Phase Retrieval with Focusing Constraint\n")  
+		write(io, "========================================\n")  
 		w1=ones(size(g))
-		w1[:,ine]=0.0
+		w1[:,ine] .= 0.0
 		w1[1,ine]=1.0
 		# initialize g such that g_near is focused
 		for i in eachindex(g)
@@ -151,8 +157,8 @@ function fpr!(g::AbstractMatrix{Float64}, pa::FPR; precon=:focus)
 		update!(g,w1,pa, focus_flag=true);
 	end
 
-	println("Regular Phase Retrieval")  
-	println("=======================")  
+	write(io, "Regular Phase Retrieval\n")  
+	write(io, "=======================\n")  
 	w2=ones(size(g))
 	update!(g,w2,pa, focus_flag=false);
 end

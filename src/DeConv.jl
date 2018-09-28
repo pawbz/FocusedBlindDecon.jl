@@ -35,6 +35,7 @@ include("ddecon.jl")
 include("operators.jl")
 include("updates.jl")
 include("save.jl")
+include("misc.jl")
 include("plots.jl")
 
 end # module

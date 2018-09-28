@@ -1,4 +1,12 @@
 
+function save(pa::FBD, folder; tgridg=nothing, tgrid=nothing)
+	!(isdir(folder)) && error("invalid directory")
+
+	save(pa.fibd,tgridg=tgridg, tgrid=tgrid)
+	save(pa.fpr,tgridg=tgridg, tgrid=tgrid)
+	#save(pa.lsbd,tgridg=tgridg, tgrid=tgrid)
+end
+
 """
 Save BD
 * `tgridg` : 1D Grid for Green's functions

@@ -2,7 +2,7 @@
 This file contains routines that are common to both BD and IBD
 =#
 
-function func_grad!(storage, x::AbstractVector{Float64}, pa, attrib)
+function func_grad!(storage, x::AbstractVector, pa, attrib)
 	global to
 
 	# x to pa.optm.cal.s or pa.optm.cal.g 

@@ -4,18 +4,18 @@
    * =:positive  only positive lags 
    * =:all all lags  
 """
-mutable struct IBD
-	om::ObsModel
-	optm::OptimModel
-	gx::X
-	sx::X
+mutable struct IBD{T}
+	om::ObsModel{T}
+	optm::OptimModel{T}
+	gx::X{T}
+	sx::X{T}
 	sx_attrib::Symbol
 	sx_fix_zero_lag_flag::Bool
 	attrib_inv::Symbol
 	verbose::Bool
 	err::DataFrames.DataFrame
-	opG::LinearMaps.LinearMap{Float64}
-	opS::LinearMaps.LinearMap{Float64}
+	opG::LinearMaps.LinearMap{T}
+	opS::LinearMaps.LinearMap{T}
 end
 
 
@@ -34,40 +34,46 @@ function IBD(ntg, nt, nr, nts;
 	       verbose=false,
 	       ) 
 
+	# determine type of IBD
+	if(!(dobs===nothing))
+		T=eltype(dobs)
+	else
+		T1=eltype(sobs)
+		T2=eltype(gobs)
+		(T1≠T2) ? error("type difference") : (T=T1)
+	end
+
 	if(ntg+nts-1 ≠ nt)
 		error("invalid sizes for convolutional model")
 	end
 
-	if(fftwflag==FFTW.PATIENT)
-
-		# use maximum threads for fft only for patient
-		fft_threads &&  (FFTW.set_num_threads(CPU_THREADS))
-	end
+	# use maximum threads for fft only for patient
+	fft_threads &&  (FFTW.set_num_threads(Sys.CPU_THREADS))
 
 	# store observed data
-	om=ObsModel(ntg, nt, nr, nts, d=dobs, g=gobs, s=sobs)
+	om=ObsModel(ntg, nt, nr, nts, T, d=dobs, g=gobs, s=sobs)
 
 	# create interferometric Optim 
-	optm=OptimModel(2*ntg-1, 2*nt-1, binomial(nr, 2)+nr, 2*nts-1, fftwflag=fftwflag, 
+	optm=OptimModel(2*ntg-1, 2*nt-1, binomial(nr, 2)+nr, 2*nts-1, T, fftwflag=fftwflag, 
 	slags=[nts-1, nts-1], 
 	dlags=[nt-1, nt-1], 
 	glags=[ntg-1, ntg-1], 
 		 )
 		
 	# inversion variables allocation
-	gx=X(length(optm.cal.g))
+	gx=X(length(optm.cal.g),T)
 
 	if(sx_attrib==:positive)
 		if(sx_fix_zero_lag_flag)
-			sx=X(nts-1) # not including zero lag
+			sx=X(nts-1,T) # not including zero lag
 		else
-			sx=X(nts) 
+			sx=X(nts,T) 
 		end
 	elseif(sx_attrib==:all)
 		if(sx_fix_zero_lag_flag)
-			sx=X(length(optm.cal.s)-1) # not including zero lag
+			sx=X(length(optm.cal.s)-1,T) # not including zero lag
 		else
-			sx=X(length(optm.cal.s))
+			sx=X(length(optm.cal.s),T)
 		end
 	else
 		error("invalid sx_attrib")
@@ -77,10 +83,10 @@ function IBD(ntg, nt, nr, nts;
 
 
 	# dummy
-	opG=LinearMap(x->0.0, y->0.0,1,1, ismutating=true)
-	opS=LinearMap(x->0.0, y->0.0,1,1, ismutating=true)
+	opG=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
+	opS=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 
-	pa=IBD(om, optm, gx, sx, sx_attrib, sx_fix_zero_lag_flag, 
+	pa=IBD{T}(om, optm, gx, sx, sx_attrib, sx_fix_zero_lag_flag, 
 	:g, verbose, err, opG, opS)
 
 
@@ -364,7 +370,7 @@ end
 """
 Focused Blind Deconvolution
 """
-function fibd!(pa::IBD, io=stdout; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-3])
+function fibd!(pa::IBD, io=stdout; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-4])
 
 	if(io===nothing)
 		logfilename=joinpath(pwd(),string("XFIBD",Dates.now(),".log"))
@@ -421,17 +427,17 @@ function initialize!(pa::IBD, all_zero=false)
 end
 
 
-function F!(pa::IBD,	x::AbstractVector{Float64}, ::S)
+function F!(pa::IBD,	x::AbstractVector, attrib::S)
 	compute=(x!=pa.sx.last_x)
 	if(compute)
-		x_to_model!(x, pa, S()) # modify pa.optm.cal.s 
+		x_to_model!(x, pa, attrib) # modify pa.optm.cal.s 
 		copyto!(pa.sx.last_x, x)
 		Conv.mod!(pa.optm.cal, Conv.D()) # modify pa.optm.cal.d
 		return pa
 	end
 end
 
-function F!(pa::IBD,	x::AbstractVector{Float64}, ::G)
+function F!(pa::IBD,	x::AbstractVector, ::G)
 	compute=(x!=pa.gx.last_x)
 	if(compute)
 		x_to_model!(x, pa, G()) # modify pa.optm.cal.g

@@ -12,10 +12,10 @@ function create_operator(pa, attrib)
 	fw=(y,x)->@timeit to "F" F!(y, x, pa, attrib)
 	bk=(y,x)->@timeit to "Fadj" Fadj!(y, x, pa, attrib)
 
-	return LinearMap(fw, bk, 
+	return LinearMap{collect(typeof(pa).parameters)...}(fw, bk, 
 		  length(pa.optm.cal.d),  # length of output
 		  ninv(pa, attrib),
-		  ismutating=true)
+		  ismutating=true, isposdef=true)
 end
 
 function F!(y, x, pa, attrib)
