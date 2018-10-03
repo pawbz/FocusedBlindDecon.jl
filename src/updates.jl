@@ -144,7 +144,7 @@ function update_all!(pa, io=stdout;
 				    min_roundtrips=10,
 				    verbose=verbose,
 				    reinit_func=xxx->initialize!(pa),
-				    after_roundtrip_func=x->(write(io,TimerOutputs.flatten(to))),
+				    after_roundtrip_func=x->(write(io,string(TimerOutputs.flatten(to)))),
 				    )
 	end
 
@@ -161,7 +161,7 @@ function update_all!(pa, io=stdout;
 
 	Inversion.go(paam, io)  # run alternative minimization
 
-	write(io,to)
+	write(io,string(to))
 
 	# print errors
 	err!(pa, io)
