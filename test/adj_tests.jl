@@ -1,4 +1,4 @@
-pa=DeConv.simple_problem()
+pa=DC.simple_problem()
 
 function adjtest()
 	x=randn(size(F,2))
@@ -15,16 +15,16 @@ end
 
 @testset "IBD" begin
 	global p=pa.pfibd
-	for attrib in [DeConv.S(), DeConv.G()]
-		global F=DeConv.operator(p, attrib);
+	for attrib in [DC.S(), DC.G()]
+		global F=DC.operator(p, attrib);
 		adjtest()
 	end
 end
 
 @testset "BD" begin
 	global p=pa.plsbd
-	for attrib in [DeConv.S(), DeConv.G()]
-		global F=DeConv.operator(p, attrib);
+	for attrib in [DC.S(), DC.G()]
+		global F=DC.operator(p, attrib);
 		adjtest()
 	end
 end

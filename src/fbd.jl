@@ -10,14 +10,16 @@ function FBD(ntg, nt, nr, nts;
 	       dobs=nothing, 
 	       gobs=nothing, 
 	       sobs=nothing, 
+	       sxp=Sxparam(1,:positive)
 	       ) 
 	pfibd=IBD(ntg, nt, nr, nts, gobs=gobs, dobs=dobs, sobs=sobs, 
 		  fft_threads=true, fftwflag=FFTW.MEASURE,
-		  verbose=false, sx_attrib=:positive, sx_fix_zero_lag_flag=true);
+		  verbose=false, sxp=sxp, sx_fix_zero_lag_flag=true);
 
 	pfpr=FPR(ntg, nr)
 
 	plsbd=BD(ntg, nt, nr, nts, dobs=dobs, gobs=gobs, sobs=sobs, 
+	  sxp=sxp,
 		 fft_threads=true, verbose=false, fftwflag=FFTW.MEASURE);
 
 	return FBD(pfibd, pfpr, plsbd)
@@ -44,7 +46,7 @@ function fbd!(pa::FBD, io=stdout, )
 	fpr!(g,  pa.pfpr, precon=:focus)
 
 	# update source according to the estimated g from fpr
-	update!(pa.plsbd, pa.plsbd.sx.x, S())
+	update!(pa.plsbd, pa.plsbd.sx.x, S(), optS)
 
 	# regular lsbd: do a few more AM steps? might diverge..
 	# bd!(pa.plsbd, io; tol=1e-5)
@@ -66,6 +68,6 @@ function simple_problem()
 	#Signals.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=1.0);
 	nt=ntg*tfact
 	nts=nt-ntg+1;
-	sobs=randn(nts);
-	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs)
+	sobs=(randn(nts));
+	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=Sxparam(1,:positive))
 end

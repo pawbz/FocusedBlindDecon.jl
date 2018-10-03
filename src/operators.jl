@@ -27,7 +27,7 @@ end
 
 function Fadj!(y, x, pa, attrib)
 	copyto!(pa.optm.ddcal,x)
-	Fadj!(pa, y, pa.optm.ddcal, attrib)
+	Fadj!(pa, y, x, pa.optm.ddcal, attrib)
 	return nothing
 end
 

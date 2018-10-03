@@ -17,7 +17,7 @@ function func_grad!(storage, x::AbstractVector, pa, attrib)
 	else
 		f = Misfits.error_squared_euclidean!(pa.optm.ddcal, pa.optm.cal.d, 
 				       pa.optm.obs.d, nothing, norm_flag=false)
-		@timeit to "Fadj" Fadj!(pa, storage, pa.optm.ddcal, attrib)
+		@timeit to "Fadj" Fadj!(pa, storage, x, pa.optm.ddcal, attrib)
 	end
 	return f
 

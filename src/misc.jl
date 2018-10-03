@@ -9,7 +9,7 @@ function stacked_spectrum!(dobs)
 			window[i] += (abs2(D[i,j]))
 		end
 	end        
-	LinearAlgebra.normalize!(window)       
+	rmul!(window,inv(maximum(abs,window)))
 	window = 10. * log10.(window)        
 	return Float64.(DSP.Util.rfftfreq((size(dobs,1)))), window
 end

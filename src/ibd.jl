@@ -1,6 +1,6 @@
 
 """
-* `sx_attrib` : how to create the inversion vector for sa?
+* `sxp` : how to create the inversion vector for sa?
    * =:positive  only positive lags 
    * =:all all lags  
 """
@@ -9,7 +9,7 @@ mutable struct IBD{T}
 	optm::OptimModel{T}
 	gx::X{T}
 	sx::X{T}
-	sx_attrib::Symbol
+	sxp::Sxparam
 	sx_fix_zero_lag_flag::Bool
 	attrib_inv::Symbol
 	verbose::Bool
@@ -26,7 +26,7 @@ end
 function IBD(ntg, nt, nr, nts;
 	       fft_threads=true,
 	       fftwflag=FFTW.PATIENT,
-	       sx_attrib=:positive,
+	       sxp=Sxparam(1,:positive),
 	       sx_fix_zero_lag_flag=true,
 	       dobs=nothing, 
 	       gobs=nothing, 
@@ -63,20 +63,20 @@ function IBD(ntg, nt, nr, nts;
 	# inversion variables allocation
 	gx=X(length(optm.cal.g),T)
 
-	if(sx_attrib==:positive)
+	if(sxp.attrib==:positive)
 		if(sx_fix_zero_lag_flag)
 			sx=X(nts-1,T) # not including zero lag
 		else
 			sx=X(nts,T) 
 		end
-	elseif(sx_attrib==:all)
+	elseif(sxp.attrib==:all)
 		if(sx_fix_zero_lag_flag)
 			sx=X(length(optm.cal.s)-1,T) # not including zero lag
 		else
 			sx=X(length(optm.cal.s),T)
 		end
 	else
-		error("invalid sx_attrib")
+		error("invalid sxp")
 	end
 
 	err=DataFrame(g=[], g_nodecon=[], s=[], d=[], whiteness_obs=[], whiteness_cal=[])
@@ -86,7 +86,7 @@ function IBD(ntg, nt, nr, nts;
 	opG=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 	opS=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 
-	pa=IBD{T}(om, optm, gx, sx, sx_attrib, sx_fix_zero_lag_flag, 
+	pa=IBD{T}(om, optm, gx, sx, sxp, sx_fix_zero_lag_flag, 
 	:g, verbose, err, opG, opS)
 
 
@@ -96,15 +96,15 @@ function IBD(ntg, nt, nr, nts;
 
 	#=
 	if(sx_fix_zero_lag_flag)
-		if(sx_attrib==:positive)
+		if(sxp==:positive)
 			# adjust sprecon
 			pa.sx.precon[1]=0.0 # do not update zero lag
 			pa.sx.preconI[1]=0.0 # do not update zero lag
-		elseif(sx_attrib==:all)
+		elseif(sxp==:all)
 			pa.sx.precon[nts]=0.0 # do not update zero lag
 			pa.sx.preconI[nts]=0.0 # do not update zero lag
 		else
-			error("invalid sx_attrib")
+			error("invalid sxp")
 		end
 	end
 	=#
@@ -161,32 +161,32 @@ function update_finalize!(pa::IBD, ::G)
 end
 
 function model_to_x!(x, pa::IBD, ::S)
-	if(pa.sx_attrib==:all)
+	if(pa.sxp.attrib==:all)
 		if(pa.sx_fix_zero_lag_flag)
 			nts=pa.om.nts
 			for i in 1:nts-1
-				x[i]=pa.optm.cal.s[i]*pa.sx.precon[i] 
+				x[i]=^(pa.optm.cal.s[i],inv(pa.sxp.n))*pa.sx.precon[i] 
 			end
 			for i in nts+1:2*nts-1
-				x[i-1]=pa.optm.cal.s[i]*pa.sx.precon[i-1] 
+				x[i-1]=^(pa.optm.cal.s[i],inv(pa.sxp.n))*pa.sx.precon[i-1] 
 			end
 		else
 			for i in eachindex(x)
-				x[i]=pa.optm.cal.s[i]*pa.sx.precon[i] 
+				x[i]=^(pa.optm.cal.s[i],inv(pa.sxp.n))*pa.sx.precon[i] 
 			end
 		end
-	elseif(pa.sx_attrib==:positive)
+	elseif(pa.sxp.attrib==:positive)
 		if(pa.sx_fix_zero_lag_flag)
 			for i in eachindex(x)
-				x[i]=pa.optm.cal.s[pa.om.nts+i]*pa.sx.precon[i] # just take positive lags
+				x[i]=^(pa.optm.cal.s[pa.om.nts+i],inv(pa.sxp.n))*pa.sx.precon[i] # just take positive lags
 			end
 		else
 			for i in eachindex(x)
-				x[i]=pa.optm.cal.s[i+pa.om.nts-1]*pa.sx.precon[i] # just take positive lags
+				x[i]=^(pa.optm.cal.s[i+pa.om.nts-1],inv(pa.sxp.n))*pa.sx.precon[i] # just take positive lags
 			end
 		end
 	else	
-		error("invalid sx_attrib")
+		error("invalid sxp")
 	end
 	return nothing
 end
@@ -199,40 +199,40 @@ end
 
 
 function x_to_model!(x, pa::IBD, ::S)
-	if(pa.sx_attrib==:all)
+	if(pa.sxp.attrib==:all)
 		if(pa.sx_fix_zero_lag_flag)
 			for i in 1:pa.om.nts-1
-				pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
+				pa.optm.cal.s[i]=^(x[i],pa.sxp.n)*pa.sx.preconI[i]
 			end
 			for i in pa.om.nts+1:2*pa.om.nts-1
-				pa.optm.cal.s[i]=x[i-1]*pa.sx.preconI[i-1]
+				pa.optm.cal.s[i]=^(x[i-1],pa.sxp.n)*pa.sx.preconI[i-1]
 			end
 			pa.optm.cal.s[pa.om.nts]=0.0
 		else
 			for i in eachindex(pa.optm.cal.s)
-				pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
+				pa.optm.cal.s[i]=^(x[i],pa.sxp.n)*pa.sx.preconI[i]
 			end
 		end
-	elseif(pa.sx_attrib==:positive)
+	elseif(pa.sxp.attrib==:positive)
 		if(pa.sx_fix_zero_lag_flag)
 			for i in 1:pa.om.nts-1
 				# put same in positive lags
-				pa.optm.cal.s[pa.om.nts+i]=x[i]*pa.sx.preconI[i]
+				pa.optm.cal.s[pa.om.nts+i]=^(x[i],pa.sxp.n)*pa.sx.preconI[i]
 				# put same in negative lags
-				pa.optm.cal.s[pa.om.nts-i]=x[i]*pa.sx.preconI[i]
+				pa.optm.cal.s[pa.om.nts-i]=^(x[i],pa.sxp.n)*pa.sx.preconI[i]
 			end
 			pa.optm.cal.s[pa.om.nts]=0.0
 		else
 			for i in 1:pa.om.nts-1
 				# put same in positive lags
-				pa.optm.cal.s[pa.om.nts+i]=x[i+1]*pa.sx.preconI[i+1]
+				pa.optm.cal.s[pa.om.nts+i]=^(x[i+1],pa.sxp.n)*pa.sx.preconI[i+1]
 				# put same in negative lags
-				pa.optm.cal.s[pa.om.nts-i]=x[i+1]*pa.sx.preconI[i+1]
+				pa.optm.cal.s[pa.om.nts-i]=^(x[i+1],pa.sxp.n)*pa.sx.preconI[i+1]
 			end
-			pa.optm.cal.s[pa.om.nts]=x[1]*pa.sx.preconI[1]
+			pa.optm.cal.s[pa.om.nts]=^(x[1],pa.sxp.n)*pa.sx.preconI[1]
 		end
 	else
-		error("invalid sx_attrib")
+		error("invalid sxp")
 	end
 	return pa
 end
@@ -413,7 +413,7 @@ end
 
 function initialize!(pa::IBD, all_zero=false)
 	for i in eachindex(pa.optm.cal.s)
-		pa.optm.cal.s[i]=0.0 # +ve lags and -ve lags
+		pa.optm.cal.s[i]= 0.0 # +ve lags and -ve lags
 	end
 #	pa.optm.cal.s[pa.om.nts]=1.0 # initialize zero lag to one
 	if(all_zero)
@@ -452,10 +452,10 @@ end
 """
 Apply Fadj to dcal and return storage
 """
-function Fadj!(pa::IBD, storage, dcal, ::S)
+function Fadj!(pa::IBD, storage, x, dcal, ::S)
 	fill!(storage, 0.)
 	Conv.mod!(pa.optm.cal, Conv.S(), d=dcal, s=pa.optm.ds)
-	if(pa.sx_attrib == :positive)
+	if(pa.sxp.attrib == :positive)
 		# stacking over +ve and -ve lags
 		if(pa.sx_fix_zero_lag_flag)
 			for j in 2:pa.om.nts
@@ -469,7 +469,7 @@ function Fadj!(pa::IBD, storage, dcal, ::S)
 			end
 			storage[1]=pa.optm.ds[pa.om.nts]
 		end
-	elseif(pa.sx_attrib == :all)
+	elseif(pa.sxp.attrib == :all)
 		if(pa.sx_fix_zero_lag_flag)
 			nts=pa.om.nts
 			for i in 1:nts-1
@@ -491,12 +491,12 @@ function Fadj!(pa::IBD, storage, dcal, ::S)
 		if(iszero(pa.sx.precon[i]))
 			storage[i]=0.0
 		else
-			storage[i] = storage[i]*pa.sx.preconI[i]
+			storage[i] = storage[i]*pa.sxp.n*^(x[i],pa.sxp.n-1)*pa.sx.preconI[i]
 		end
 	end
 end
 
-function Fadj!(pa::IBD, storage, dcal, ::G)
+function Fadj!(pa::IBD, storage, x, dcal, ::G)
 	Conv.mod!(pa.optm.cal, Conv.G(), g=pa.optm.dg, d=dcal)
 	for i in eachindex(storage)
 		if(iszero(pa.gx.precon[i]))

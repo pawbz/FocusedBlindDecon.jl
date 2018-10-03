@@ -15,7 +15,7 @@ function update_cymat!(pa::FPR; cymat=nothing, cy=nothing, gobs=nothing, nearest
 	(cymat===nothing) && (cy===nothing) && error("need cy or cymat")
 	if(nearest_receiver===nothing)
 		if(gobs===nothing)
-			info("assuming ir=1 is the nearest recevier")
+			@info "assuming ir=1 is the nearest recevier"
 			ine=1
 		else
 			ine=inear(gobs)

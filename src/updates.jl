@@ -1,12 +1,7 @@
 
 
-
-struct Use_Optim end
-struct Use_Ipopt end
-struct Use_IterativeSolvers end
-
 # core algorithm
-function update!(pa, x, attrib::G,)# ::Use_IterativeSolvers) 
+function update!(pa, x, attrib, ::UseIterativeSolvers)
 	update_prepare!(pa, attrib)
 
 	# prepare b
@@ -32,8 +27,8 @@ function update!(pa, x, attrib::G,)# ::Use_IterativeSolvers)
 end
 
 
-# core algorithm
-function update!(pa, x, attrib::S) 
+# use Optim, but using Fminbox, because Source Time Functions (STFs) are only positive
+function update!(pa, x, attrib::S, ::UseOptimSTF) 
 	update_prepare!(pa, attrib)
 
 	f =x->func_grad!(nothing, x,  pa, attrib) 
@@ -43,12 +38,9 @@ function update!(pa, x, attrib::S)
 	model_to_x!(x, pa, attrib)
 
 	# put bounds
-	fill!(pa.sx.lower_x, 0.0)
+	fill!(pa.sx.lower_x, -Inf)
 	fill!(pa.sx.upper_x, Inf)
 
-	"""
-	Unbounded LBFGS inversion, only for testing
-	"""
 	res = optimize(f, g!, 
 		pa.sx.lower_x, pa.sx.upper_x,
 		x, 
@@ -66,8 +58,31 @@ function update!(pa, x, attrib::S)
 	return Optim.minimum(res)
 end
 
-# core algorithm
-function update!(pa, x, attrib::S, ::Use_Ipopt) 
+# use Optim
+function update!(pa, x, attrib, ::UseOptim) 
+	update_prepare!(pa, attrib)
+
+	f =x->func_grad!(nothing, x,  pa, attrib) 
+	g! =(storage, x)->func_grad!(storage, x,  pa, attrib)
+
+	# put the value from model to x
+	model_to_x!(x, pa, attrib)
+
+	res = optimize(f, g!, 
+		x, ConjugateGradient(alphaguess = LineSearches.InitialQuadratic()),
+		Optim.Options(g_tol = 1e-8, iterations = 2000, show_trace = false))
+	pa.verbose && println(res)
+
+	x_to_model!(Optim.minimizer(res), pa, attrib)
+
+	update_finalize!(pa, attrib)
+
+	return Optim.minimum(res)
+end
+
+
+# use Ipopt (don't use)
+function update!(pa, x, attrib::S, ::UseIpoptSTF) 
 	update_prepare!(pa, attrib)
 	nx=length(x)
 	eval_f=x->func_grad!(nothing, x,  pa, attrib) 
@@ -81,7 +96,7 @@ function update!(pa, x, attrib::S, ::Use_Ipopt)
 		      fill(Inf, nx),
 		      #Array{Float64}(0), # lower_x
 		      #Array{Float64}(0), # upper_x
-		      0, Array{eltype(x)}(0), Array{eltype(x)}(0), 0, 0,
+		      0, Array{Float64}(undef,0), Array{Float64}(undef,0), 0, 0,
 			eval_f, void_g, eval_grad_f, void_g_jac, nothing)
 
 	addOption(prob, "hessian_approximation", "limited-memory")
@@ -119,7 +134,7 @@ function update_all!(pa, io=stdout;
 		     optim_tols=[1e-6, 1e-6], verbose=true,
 		     )
 
-	global to
+	global to, optG, optS
 	reset_timer!(to)
 
 	if(ParamAM_func===nothing)
@@ -129,14 +144,14 @@ function update_all!(pa, io=stdout;
 				    min_roundtrips=10,
 				    verbose=verbose,
 				    reinit_func=xxx->initialize!(pa),
-				    after_roundtrip_func=x->(println(TimerOutputs.flatten(to))),
+				    after_roundtrip_func=x->(write(io,TimerOutputs.flatten(to))),
 				    )
 	end
 
 	
 	# create alternating minimization parameters
-	f1=x->@timeit to "update S()" update!(pa, pa.sx.x, S())
-	f2=x->@timeit to "update G()" update!(pa, pa.gx.x, G())
+	f1=x->@timeit to "update S()" update!(pa, pa.sx.x, S(), optS)
+	f2=x->@timeit to "update G()" update!(pa, pa.gx.x, G(), optG)
 	paam=ParamAM_func([f1, f2])
 
 	if(io===nothing)
@@ -146,7 +161,7 @@ function update_all!(pa, io=stdout;
 
 	Inversion.go(paam, io)  # run alternative minimization
 
-	println(to)
+	write(io,to)
 
 	# print errors
 	err!(pa, io)

@@ -1,6 +1,5 @@
 using Revise
 using Signals
-using Grid
 using Inversion
 using DeConv
 using Base.Test
@@ -16,7 +15,7 @@ gobs=zeros(ntg, nr)
 Signals.DSP.toy_green!(gobs,bfrac=0.2, nevents=3,   afrac=[2.0, 0.5, 0.25]);
 nt = ntg*tfact
 δt=0.0001; # results of independent of this
-tgridnoise=Grid.M1D(0., Float64(ntg*tfact), ntg*tfact)
+tgridnoise=range(0., stop=Float64(ntg*tfact), length=ntg*tfact)
 gprecon, gweights, sprecon=DeConv.create_white_weights(ntg, nt, nr)
 sobs=randn(nt);
 pa=DeConv.Param(ntg, nt, nr, gobs=gobs,fft_threads=true, gprecon=gprecon,     snorm_flag=false, sobs=sobs, verbose=false, gweights=gweights, mode=:ibd, fftwflag=FFTW.MEASURE);

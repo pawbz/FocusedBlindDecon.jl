@@ -5,6 +5,7 @@ mutable struct BD{T}
 	optm::OptimModel{T}
 	gx::X{T}
 	sx::X{T}
+	sxp::Sxparam
 	snorm_flag::Bool 	# restrict s along a unit circle during optimization
 	snormmat::Matrix{T}            # stored outer product of s
 	dsnorm::Vector{T}		# gradient w.r.t. normalized selet
@@ -22,6 +23,7 @@ Constructor for the blind deconvolution problem
 """
 function BD(ntg, nt, nr, nts; 
 	    gprecon_attrib=:none,
+	       sxp=Sxparam(1,:all),
 	       gweights=nothing,
 	       goptim=nothing,
 	       gαvec=nothing,
@@ -74,7 +76,7 @@ function BD(ntg, nt, nr, nts;
 	opS=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 
 	pa=BD(
-		om,		optm,			gx,		sx,		snorm_flag,
+		om,		optm,			gx,		sx,	sxp, snorm_flag,
 		snormmat,		dsnorm,		attrib_inv,		verbose,
 		err, opG, opS)		# trying to penalize the energy in the correlations of g (not in practice),
 
@@ -118,7 +120,7 @@ end
 
 function model_to_x!(x, pa::BD, ::S)
 	for i in eachindex(x)
-		x[i]=pa.optm.cal.s[i]*pa.sx.precon[i]
+		x[i]=^(pa.optm.cal.s[i],inv(pa.sxp.n))*pa.sx.precon[i]
 	end
 	return nothing
 end
@@ -134,7 +136,7 @@ end
 function x_to_model!(x, pa::BD, ::S)
 	for i in eachindex(pa.optm.cal.s)
 		# put same in all receivers
-		pa.optm.cal.s[i]=x[i]*pa.sx.preconI[i]
+		pa.optm.cal.s[i]=^(x[i],pa.sxp.n)*pa.sx.preconI[i]
 	end
 	if(pa.snorm_flag)
 		xn=vecnorm(x)
@@ -257,7 +259,7 @@ end
 """
 Apply Fadj to dcal 
 """
-function Fadj!(pa::BD, storage, dcal, ::S)
+function Fadj!(pa::BD, storage, x, dcal, ::S)
 	fill!(storage, 0.0)
 	Conv.mod!(pa.optm.cal, Conv.S(), d=dcal, s=pa.optm.ds)
 	for j in 1:size(pa.optm.ds,1)
@@ -269,7 +271,7 @@ function Fadj!(pa::BD, storage, dcal, ::S)
 		if(iszero(pa.sx.precon[i]))
 			storage[i]=0.0
 		else
-			storage[i] = storage[i]*pa.sx.preconI[i]
+			storage[i] = storage[i]*pa.sxp.n*^(x[i],pa.sxp.n-1)*pa.sx.preconI[i]
 		end
 	end
 	# factor, because s was divided by norm of x
@@ -280,7 +282,7 @@ function Fadj!(pa::BD, storage, dcal, ::S)
 	return storage
 end
 
-function Fadj!(pa::BD, storage, dcal, ::G)
+function Fadj!(pa::BD, storage, x, dcal, ::G)
 	Conv.mod!(pa.optm.cal, Conv.G(), g=pa.optm.dg, d=dcal)
 
 	for i in eachindex(storage)
@@ -299,7 +301,7 @@ function initialize!(pa::BD)
 	# starting random models
 	for i in eachindex(pa.optm.cal.s)
 		x=(pa.sx.precon[i]≠0.0) ? randn() : 0.0
-		pa.optm.cal.s[i]=x
+		pa.optm.cal.s[i]=^(^(x,pa.sxp.n),inv(pa.sxp.n))
 	end
 	for i in eachindex(pa.optm.cal.g)
 		x=(pa.gx.precon[i]≠0.0) ? randn() : 0.0

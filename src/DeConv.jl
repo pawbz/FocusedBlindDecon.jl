@@ -5,7 +5,6 @@ using Inversion
 using Misfits
 using Signals
 using Conv
-using Grid
 using Optim
 using LineSearches
 using Ipopt
@@ -24,6 +23,28 @@ using Dates
 
 global const to = TimerOutput(); # create a timer object
 
+
+struct UseOptim end
+struct UseOptimSTF end
+struct UseIpoptSTF end
+struct UseIpopt end
+struct UseIterativeSolvers end
+
+global optG=UseIterativeSolvers() 
+global optS=UseIterativeSolvers() 
+#global optS=UseOptim() 
+
+
+const DC=DeConv
+export DC
+
+struct Sxparam
+	n::Int64
+	attrib::Symbol
+end
+
+
+
 include("types.jl")
 include("fpr.jl")
 include("bd.jl")
@@ -37,6 +58,7 @@ include("updates.jl")
 include("save.jl")
 include("misc.jl")
 include("plots.jl")
+
 
 end # module
 
