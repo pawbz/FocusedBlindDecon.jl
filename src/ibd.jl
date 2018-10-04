@@ -132,7 +132,9 @@ end
 
 
 function update_prepare!(pa::IBD, ::S)
-	if(pa.sx_fix_zero_lag_flag)
+	# fixing zero lag of source is equivalent to fitting d-g, for sxp.n==1	
+	# note that it is necessary while using IterativeSolvers.jl
+	if(isequal(pa.sxp.n,1) && pa.sx_fix_zero_lag_flag)
 		for ir in 1:pa.optm.nr
 			for it in 1:pa.optm.ntg
 				pa.optm.obs.d[pa.om.nt-pa.om.ntg+it,ir] -= pa.optm.cal.g[it,ir]
@@ -141,12 +143,13 @@ function update_prepare!(pa::IBD, ::S)
 	end
 end
 function update_prepare!(pa::IBD, ::G)
-	if(pa.sx_fix_zero_lag_flag)
+	if(isequal(pa.sxp.n,1) && pa.sx_fix_zero_lag_flag)
 		pa.optm.cal.s[pa.om.nts]=1.0
 	end
 end
 function update_finalize!(pa::IBD, ::S)
-	if(pa.sx_fix_zero_lag_flag)
+	# add g back to d, after optimizing s
+	if(isequal(pa.sxp.n,1) && pa.sx_fix_zero_lag_flag)
 		for ir in 1:pa.optm.nr
 			for it in 1:pa.optm.ntg
 				pa.optm.obs.d[pa.om.nt-pa.om.ntg+it,ir] += pa.optm.cal.g[it,ir]
@@ -155,7 +158,7 @@ function update_finalize!(pa::IBD, ::S)
 	end
 end
 function update_finalize!(pa::IBD, ::G)
-	if(pa.sx_fix_zero_lag_flag)
+	if(isequal(pa.sxp.n,1) && pa.sx_fix_zero_lag_flag)
 		pa.optm.cal.s[pa.om.nts]=0.0
 	end
 end
@@ -207,7 +210,12 @@ function x_to_model!(x, pa::IBD, ::S)
 			for i in pa.om.nts+1:2*pa.om.nts-1
 				pa.optm.cal.s[i]=^(x[i-1],pa.sxp.n)*pa.sx.preconI[i-1]
 			end
-			pa.optm.cal.s[pa.om.nts]=0.0
+			if(isequal(pa.sxp.n,1))
+				pa.optm.cal.s[pa.om.nts]=0.0
+			else
+				pa.optm.cal.s[pa.om.nts]=1.0
+			end
+
 		else
 			for i in eachindex(pa.optm.cal.s)
 				pa.optm.cal.s[i]=^(x[i],pa.sxp.n)*pa.sx.preconI[i]
@@ -221,7 +229,11 @@ function x_to_model!(x, pa::IBD, ::S)
 				# put same in negative lags
 				pa.optm.cal.s[pa.om.nts-i]=^(x[i],pa.sxp.n)*pa.sx.preconI[i]
 			end
-			pa.optm.cal.s[pa.om.nts]=0.0
+			if(isequal(pa.sxp.n,1))
+				pa.optm.cal.s[pa.om.nts]=0.0
+			else
+				pa.optm.cal.s[pa.om.nts]=1.0
+			end
 		else
 			for i in 1:pa.om.nts-1
 				# put same in positive lags
@@ -413,7 +425,7 @@ end
 
 function initialize!(pa::IBD, all_zero=false)
 	for i in eachindex(pa.optm.cal.s)
-		pa.optm.cal.s[i]= 0.0 # +ve lags and -ve lags
+		pa.optm.cal.s[i]= ^(abs.(randn()),(pa.sxp.n-1)) # zero for sxp.n==1, otherwise randn
 	end
 #	pa.optm.cal.s[pa.om.nts]=1.0 # initialize zero lag to one
 	if(all_zero)

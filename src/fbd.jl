@@ -18,8 +18,10 @@ function FBD(ntg, nt, nr, nts;
 
 	pfpr=FPR(ntg, nr)
 
+	# sxp is not used here, because the estimated g after fpr has ambiguous sign
+	# as a result, positivity constraint cannot be imposed on s
 	plsbd=BD(ntg, nt, nr, nts, dobs=dobs, gobs=gobs, sobs=sobs, 
-	  sxp=sxp,
+#	  sxp=sxp,
 		 fft_threads=true, verbose=false, fftwflag=FFTW.MEASURE);
 
 	return FBD(pfibd, pfpr, plsbd)
@@ -56,6 +58,24 @@ end
 
 
 
+function random_problem(;stf=false)
+
+	ntg=3
+	nr=50
+	tfact=10
+	gobs=randn(ntg, nr)
+	nt=ntg*tfact
+	nts=nt-ntg+1;
+	sobs=randn(nts)
+	sxp=Sxparam(1,:positive)
+	if(stf)
+		sobs=abs.(sobs);
+		sxp=Sxparam(2,:positive)
+	end
+	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=sxp)
+end
+
+
 function simple_problem()
 
 	ntg=30
@@ -70,4 +90,21 @@ function simple_problem()
 	nts=nt-ntg+1;
 	sobs=(randn(nts));
 	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=Sxparam(1,:positive))
+end
+
+#Source Time Functions are always positive
+function simple_STF_problem()
+
+	ntg=30
+	nr=20
+	tfact=20
+	gobs=zeros(ntg, nr)
+	Signals.toy_direct_green!(gobs, c=4.0, bfrac=0.20, afrac=1.0);
+	#Signals.toy_direct_green!(gobs, c=4.0, bfrac=0.4, afrac=1.0);
+	Signals.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=-0.6);
+	#Signals.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=1.0);
+	nt=ntg*tfact
+	nts=nt-ntg+1;
+	sobs=abs.(randn(nts));
+	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs, sxp=Sxparam(2,:positive))
 end

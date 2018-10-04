@@ -25,15 +25,28 @@ global const to = TimerOutput(); # create a timer object
 
 
 struct UseOptim end
-struct UseOptimSTF end
-struct UseIpoptSTF end
-struct UseIpopt end
 struct UseIterativeSolvers end
 
-global optG=UseIterativeSolvers() 
-global optS=UseIterativeSolvers() 
-#global optS=UseOptim() 
+global optG
+global optS
 
+function __init__()
+	global optG, optS
+	if(get(ENV, "FOCUSBD_OPTG","not_set") == "iterativesolvers")
+		@info "FocusBD using IterativeSolvers.jl for G"
+		optG=UseIterativeSolvers() 
+	else
+		@info "FocusBD using Optim.jl for G"
+		optG=UseOptim() 
+	end
+	if(get(ENV, "FOCUSBD_OPTS","not_set") == "iterativesolvers")
+		@info "FocusBD using IterativeSolvers.jl for S"
+		optS=UseIterativeSolvers() 
+	else
+		@info "FocusBD using Optim.jl for S"
+		optS=UseOptim() 
+	end
+end
 
 const DC=DeConv
 export DC
