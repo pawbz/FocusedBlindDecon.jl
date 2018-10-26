@@ -18,10 +18,8 @@ function FBD(ntg, nt, nr, nts;
 
 	pfpr=FPR(ntg, nr)
 
-	# sxp is not used here, because the estimated g after fpr has ambiguous sign
-	# as a result, positivity constraint cannot be imposed on s
 	plsbd=BD(ntg, nt, nr, nts, dobs=dobs, gobs=gobs, sobs=sobs, 
-#	  sxp=sxp,
+	  sxp=sxp,
 		 fft_threads=true, verbose=false, fftwflag=FFTW.MEASURE);
 
 	return FBD(pfibd, pfpr, plsbd)
@@ -29,13 +27,17 @@ function FBD(ntg, nt, nr, nts;
 end
 
 
-function fbd!(pa::FBD, io=stdout, )
+function fbd!(pa::FBD, io=stdout; tasks=[:restart, :fibd, :fpr, :updateS])
 
-	# initialize
-	DeConv.initialize!(pa.pfibd)
+	if(:restart ∈ tasks)
+		# initialize
+		DeConv.initialize!(pa.pfibd)
+	end
 
-	# start with fibd
-	fibd!(pa.pfibd, io, α=[Inf,0.0],tol=[1e-10,1e-6])
+	if(:fibd ∈ tasks)
+		# start with fibd
+		fibd!(pa.pfibd, io, α=[Inf,0.0],tol=[1e-10,1e-6])
+	end
 
 	# input g from fibd to fpr
 	gobs = (iszero(pa.pfibd.om.g)) ? nothing : pa.pfibd.om.g # choose gobs for nearest receiver or not?
@@ -45,13 +47,23 @@ function fbd!(pa::FBD, io=stdout, )
 	g=pa.plsbd.optm.cal.g
 	Random.randn!(g)
 
-	fpr!(g,  pa.pfpr, precon=:focus)
+	if(:fpr ∈ tasks)
+		fpr!(g,  pa.pfpr, precon=:focus)
+	end
 
-	# update source according to the estimated g from fpr
-	update!(pa.plsbd, pa.plsbd.sx.x, S(), optS)
+	if(:updateS ∈ tasks)
+		# update source according to the estimated g from fpr
+		if(pa.plsbd.sxp.n == 2)
+			update_stf!(pa.plsbd)
+		else
+			update!(pa.plsbd, pa.plsbd.sx.x, S(), optS)
+		end
+	end
 
 	# regular lsbd: do a few more AM steps? might diverge..
-	# bd!(pa.plsbd, io; tol=1e-5)
+	if(:lsbd ∈ tasks)
+		bd!(pa.plsbd, io; tol=1e-5)
+	end
 
 	return nothing
 end

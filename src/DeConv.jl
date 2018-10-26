@@ -7,7 +7,6 @@ using Signals
 using Conv
 using Optim
 using LineSearches
-using Ipopt
 using RecipesBase
 using DataFrames
 using StatsBase

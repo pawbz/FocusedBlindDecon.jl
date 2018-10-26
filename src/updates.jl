@@ -100,3 +100,34 @@ function update_all!(pa, io=stdout;
 end
 
 
+
+
+"""
+Given g (sign is ambiguous), update s such that s>0
+"""
+function update_stf!(pa::BD,)
+	(pa.sxp.n ≠ 2) && error("stf update not possible")
+	# update source according to the estimated g from fpr
+	update!(pa, pa.sx.x, S(), optS)
+	# save functional and estimated source
+	f1 = Misfits.error_squared_euclidean!(nothing, pa.optm.cal.d, pa.optm.obs.d, 
+				       nothing, norm_flag=false)
+	s1 = copy(pa.optm.cal.s)
+
+
+	# what if the sign of g is otherwise
+	rmul!(pa.optm.cal.g, -1.0)
+	update!(pa, pa.sx.x, S(), optS)
+	f2 = Misfits.error_squared_euclidean!(nothing, pa.optm.cal.d, pa.optm.obs.d, 
+			       nothing, norm_flag=false)
+	s2 = copy(pa.optm.cal.s)
+
+	# sxp is not used here, because the estimated g after fpr has ambiguous sign
+	# as a result, positivity constraint cannot be imposed on s
+	if(f1<f2)
+		copyto!(pa.optm.cal.s, s1)
+		rmul!(pa.optm.cal.g, -1.0)
+	end
+
+	return nothing
+end
