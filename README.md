@@ -1,4 +1,5 @@
-# Blind Deconvolution
+# Focused Blind Deconvolution (FBD)
+
 A multi-channel blind deconvolution (BD) example is here. Choose the length of the Green's functions, source signal and data vectors:
 ```julia
 ntg=20 # length of Green's functions
