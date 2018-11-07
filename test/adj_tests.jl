@@ -30,3 +30,10 @@ end
 end
 
 
+
+# adj tests of filter
+pa=DC.P_bandpass(Float64, fmin=0.1, fmax=0.4, order=4, nt=101)
+global F=DC.create_operator(pa)
+@testset "bandpass" begin
+	adjtest()
+end

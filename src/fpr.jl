@@ -120,6 +120,7 @@ function update!(g::AbstractMatrix, w::AbstractMatrix, pa::FPR;
 		ConjugateGradient(),
 		Optim.Options(iterations = 10000, g_tol=1e-4,
 			show_every=250,
+			store_trace=true,
 		       show_trace=true))
 	println(res)
 	flush(stdout)
@@ -127,6 +128,12 @@ function update!(g::AbstractMatrix, w::AbstractMatrix, pa::FPR;
 	for i in eachindex(g)
 		g[i]=Optim.minimizer(res)[i]
 	end
+
+	# save log file
+	PRlogfile=joinpath(pwd(),string("PR",Dates.now(),".log"))
+	CSV.write(PRlogfile, 
+	   DataFrame(hcat(0:Optim.iterations(res), Optim.f_trace(res))))
+
 	return g
 end
 

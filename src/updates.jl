@@ -49,6 +49,52 @@ function update!(pa, x, attrib, ::UseOptim)
 	return Optim.minimum(res)
 end
 
+#=
+# use bounded Optim.jl (ConjugateGradients) (for positive Source Time Functions)
+function update!(pa, x, attrib, ::UseOptimSTF) 
+
+	if(typeof(attrib) ≠ S)
+		error("bounded Optim only for S")
+	end
+
+	fill!(pa.sx.lower_x, 0.0)
+	fill!(pa.sx.upper_x, Inf)
+
+
+	update_prepare!(pa, attrib)
+
+
+	f =x->func_grad!(nothing, x,  pa, attrib) 
+	g! =(storage, x)->func_grad!(storage, x,  pa, attrib)
+	println("FFFFAA", maximum(x))
+
+	# put the value from model to x
+	model_to_x!(x, pa, attrib)
+
+	# check if x<0?
+	for i in eachindex(x)
+		if(x[i] < 0.0)
+			x[i] = 0.0
+		end
+	end
+
+	println("FFFF", maximum(x))
+
+
+	res = optimize(f, g!, pa.sx.lower_x, pa.sx.upper_x, 
+		x, Fminbox(ConjugateGradient(alphaguess = LineSearches.InitialQuadratic())),
+		Optim.Options(g_tol = 1e-8, iterations = 2000, show_trace = false))
+	pa.verbose && println(res)
+
+	x_to_model!(Optim.minimizer(res), pa, attrib)
+
+	update_finalize!(pa, attrib)
+
+	return Optim.minimum(res)
+end
+=#
+
+
 
 """
 * re_init_flag :: re-initialize inversions with random input or not?
@@ -88,6 +134,10 @@ function update_all!(pa, io=stdout;
 
 	Inversion.go(paam, io)  # run alternative minimization
 
+	# save log file
+	AMlogfile=joinpath(pwd(),string("AM",Dates.now(),".log"))
+	CSV.write(AMlogfile, paam.log)
+
 	write(io,string(to))
 	write(io, "\n")
 
@@ -106,9 +156,11 @@ end
 Given g (sign is ambiguous), update s such that s>0
 """
 function update_stf!(pa::BD,)
-	(pa.sxp.n ≠ 2) && error("stf update not possible")
+	#(pa.sxp.n ≠ 2) && error("stf update not possible")
 	# update source according to the estimated g from fpr
+	update_prepare!(pa, S())
 	update!(pa, pa.sx.x, S(), optS)
+	update_finalize!(pa, S())
 	# save functional and estimated source
 	f1 = Misfits.error_squared_euclidean!(nothing, pa.optm.cal.d, pa.optm.obs.d, 
 				       nothing, norm_flag=false)
@@ -117,10 +169,14 @@ function update_stf!(pa::BD,)
 
 	# what if the sign of g is otherwise
 	rmul!(pa.optm.cal.g, -1.0)
+	update_prepare!(pa, S())
 	update!(pa, pa.sx.x, S(), optS)
+	update_finalize!(pa, S())
 	f2 = Misfits.error_squared_euclidean!(nothing, pa.optm.cal.d, pa.optm.obs.d, 
 			       nothing, norm_flag=false)
 	s2 = copy(pa.optm.cal.s)
+
+	println("ffffffff", f1, "\t",f2)
 
 	# sxp is not used here, because the estimated g after fpr has ambiguous sign
 	# as a result, positivity constraint cannot be imposed on s

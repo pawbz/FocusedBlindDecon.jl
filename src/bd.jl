@@ -14,6 +14,7 @@ mutable struct BD{T}
 	err::DataFrames.DataFrame
 	opG::LinearMaps.LinearMap{T}
 	opS::LinearMaps.LinearMap{T}
+	pbandpass::P_bandpass{T}
 end
 
 
@@ -75,10 +76,12 @@ function BD(ntg, nt, nr, nts;
 	opG=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 	opS=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 
+	pbandpass=DC.P_bandpass(T, fmin=0.2, fmax=0.4, nt=optm.nt)
+
 	pa=BD(
 		om,		optm,			gx,		sx,	sxp, snorm_flag,
 		snormmat,		dsnorm,		attrib_inv,		verbose,
-		err, opG, opS)		# trying to penalize the energy in the correlations of g (not in practice),
+		err, opG, opS,pbandpass)		# trying to penalize the energy in the correlations of g (not in practice),
 
 
 	# update operators
@@ -114,6 +117,14 @@ end
 function update_prepare!(pa::BD, ::G)
 end
 function update_finalize!(pa::BD, ::S)
+
+	if(STF_FLAG)
+		for i in eachindex(pa.optm.cal.s)
+			if(pa.optm.cal.s[i] <0.0)
+				pa.optm.cal.s[i]=0.0
+			end
+		end
+	end
 end
 function update_finalize!(pa::BD, ::G)
 end
@@ -301,7 +312,11 @@ function initialize!(pa::BD)
 	# starting random models
 	for i in eachindex(pa.optm.cal.s)
 		x=(pa.sx.precon[i]≠0.0) ? randn() : 0.0
-		pa.optm.cal.s[i]=^(^(x,pa.sxp.n),inv(pa.sxp.n))
+		if(STF_FLAG)
+			pa.optm.cal.s[i]=abs(x)
+		else
+			pa.optm.cal.s[i]=x
+		end
 	end
 	for i in eachindex(pa.optm.cal.g)
 		x=(pa.gx.precon[i]≠0.0) ? randn() : 0.0

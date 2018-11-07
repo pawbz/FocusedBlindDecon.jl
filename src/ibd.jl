@@ -16,6 +16,8 @@ mutable struct IBD{T}
 	err::DataFrames.DataFrame
 	opG::LinearMaps.LinearMap{T}
 	opS::LinearMaps.LinearMap{T}
+	pbandpassG::P_bandpass{T}
+	pbandpassS::P_bandpass{T}
 end
 
 
@@ -32,6 +34,8 @@ function IBD(ntg, nt, nr, nts;
 	       gobs=nothing, 
 	       sobs=nothing, 
 	       verbose=false,
+	       fmin=0.15,
+	       fmax=0.45,
 	       ) 
 
 	# determine type of IBD
@@ -86,8 +90,13 @@ function IBD(ntg, nt, nr, nts;
 	opG=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 	opS=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 
+
+	pbandpassG=DC.P_bandpass(T, fmin=fmin, fmax=fmax, nt=optm.ntg)
+	pbandpassS=DC.P_bandpass(T, fmin=fmin, fmax=fmax, nt=optm.nts)
+
+
 	pa=IBD{T}(om, optm, gx, sx, sxp, sx_fix_zero_lag_flag, 
-	:g, verbose, err, opG, opS)
+	:g, verbose, err, opG, opS, pbandpassG, pbandpassS)
 
 
 	# update operators
@@ -156,10 +165,53 @@ function update_finalize!(pa::IBD, ::S)
 			end
 		end
 	end
+
+	if(FILT_FLAG)
+		# put sa[0]=1.0, before filtering
+		if(isequal(pa.sxp.n,1) && pa.sx_fix_zero_lag_flag)
+			pa.optm.cal.s[pa.om.nts]=1.0
+		end
+		bp=create_operator(pa.pbandpassS)
+		copyto!(pa.optm.ds,pa.optm.cal.s)
+		mul!(pa.optm.sfilt, bp, pa.optm.cal.s)
+		copyto!(pa.optm.cal.s,pa.optm.sfilt)
+		# 
+		if(isequal(pa.sxp.n,1) && pa.sx_fix_zero_lag_flag)
+			pa.optm.cal.s[pa.om.nts]=0.0
+		end
+	end
+
+
+	if(STF_FLAG)
+		for i in eachindex(pa.optm.cal.s)
+			if(pa.optm.cal.s[i] <0.0)
+				pa.optm.cal.s[i]=0.0
+			end
+		end
+	end
 end
 function update_finalize!(pa::IBD, ::G)
 	if(isequal(pa.sxp.n,1) && pa.sx_fix_zero_lag_flag)
 		pa.optm.cal.s[pa.om.nts]=0.0
+	end
+
+
+	if(FILT_FLAG)
+		bp=create_operator(pa.pbandpassG)
+		copyto!(pa.optm.dg,pa.optm.cal.g)
+		mul!(pa.optm.gfilt, bp, pa.optm.cal.g)
+		copyto!(pa.optm.cal.g,pa.optm.gfilt)
+
+		# put back for autocorr, if focusing
+		if(minimum(pa.gx.preconI) == 0.0)
+			irr=1  # auto correlation index
+			for ir in 1:pa.om.nr
+				gcopyv=view(pa.optm.dg,:,irr)
+				gv=view(pa.optm.cal.g, :, irr)
+				copyto!(gv, gcopyv)
+				irr+=pa.om.nr-(ir-1)
+			end
+		end
 	end
 end
 

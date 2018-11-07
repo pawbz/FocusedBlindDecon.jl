@@ -33,4 +33,48 @@ end
 
 
 
+function filt!(y,x,pa::P_bandpass)
+	copyto!(pa.x,x)
+	mul!(pa.dfreq, pa.dfftp, pa.x)
+	for i in eachindex(pa.dfreq)
+		@inbounds pa.dfreq[i] *= pa.filter[i]
+	end
+	mul!(pa.y, pa.difftp, pa.dfreq)
+	copyto!(y,pa.y)
+end
 
+function create_operator(pa::P_bandpass)
+	fw=(y,x)->filt!(y, x, pa)
+	F=LinearMap(fw, fw,# length of output,
+                 pa.nt,
+                 pa.nt,
+                 ismutating=true, isposdef=true)
+
+end
+#=
+
+function bandlimit_operator(n)
+
+	function bandlimit!(y, x,)
+		responsetype = Bandpass(0.1,0.4; fs=1)
+		designmethod = Butterworth(16)
+		b=digitalfilter(responsetype, designmethod)
+		DSP.filt!(y, b, x)
+	end
+
+
+
+	function adjtest()
+		x=randn(size(F,2))
+		y=randn(size(F,1))
+		a=LinearAlgebra.dot(y,F*x)
+		b=LinearAlgebra.dot(x,adjoint(F)*y)
+		c=LinearAlgebra.dot(x, transpose(F)*F*x)
+		println("adjoint test: ", a, "\t", b)       
+		return isapprox(a,b,rtol=1e-6)
+	end
+
+	adjtest()
+
+
+	=#

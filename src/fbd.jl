@@ -10,11 +10,13 @@ function FBD(ntg, nt, nr, nts;
 	       dobs=nothing, 
 	       gobs=nothing, 
 	       sobs=nothing, 
-	       sxp=Sxparam(1,:positive)
+	       sxp=Sxparam(1,:positive),
+	       fmin=0.0,
+	       fmax=0.5,
 	       ) 
 	pfibd=IBD(ntg, nt, nr, nts, gobs=gobs, dobs=dobs, sobs=sobs, 
 		  fft_threads=true, fftwflag=FFTW.MEASURE,
-		  verbose=false, sxp=sxp, sx_fix_zero_lag_flag=true);
+		  verbose=false, sxp=sxp, sx_fix_zero_lag_flag=true, fmin=fmin, fmax=fmax);
 
 	pfpr=FPR(ntg, nr)
 
@@ -27,7 +29,7 @@ function FBD(ntg, nt, nr, nts;
 end
 
 
-function fbd!(pa::FBD, io=stdout; tasks=[:restart, :fibd, :fpr, :updateS])
+function fbd!(pa::FBD, io=stdout; tasks=[:restart, :fibd, :fpr, :updateS], fibd_tol=[1e-10,1e-6])
 
 	if(:restart ∈ tasks)
 		# initialize
@@ -36,7 +38,8 @@ function fbd!(pa::FBD, io=stdout; tasks=[:restart, :fibd, :fpr, :updateS])
 
 	if(:fibd ∈ tasks)
 		# start with fibd
-		fibd!(pa.pfibd, io, α=[Inf,0.0],tol=[1e-10,1e-6])
+		fibd!(pa.pfibd, io, α=[Inf],tol=[fibd_tol[1]])
+		fibd!(pa.pfibd, io, α=[0.0],tol=[fibd_tol[2]])
 	end
 
 	# input g from fibd to fpr
@@ -53,7 +56,7 @@ function fbd!(pa::FBD, io=stdout; tasks=[:restart, :fibd, :fpr, :updateS])
 
 	if(:updateS ∈ tasks)
 		# update source according to the estimated g from fpr
-		if(pa.plsbd.sxp.n == 2)
+		if(STF_FLAG)
 			update_stf!(pa.plsbd)
 		else
 			update!(pa.plsbd, pa.plsbd.sx.x, S(), optS)
@@ -70,7 +73,7 @@ end
 
 
 
-function random_problem(;stf=false)
+function random_problem()
 
 	ntg=3
 	nr=50
@@ -80,9 +83,8 @@ function random_problem(;stf=false)
 	nts=nt-ntg+1;
 	sobs=randn(nts)
 	sxp=Sxparam(1,:positive)
-	if(stf)
+	if(STF_FLAG)
 		sobs=abs.(sobs);
-		sxp=Sxparam(2,:positive)
 	end
 	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=sxp)
 end
@@ -102,6 +104,22 @@ function simple_problem()
 	nts=nt-ntg+1;
 	sobs=(randn(nts));
 	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=Sxparam(1,:positive))
+end
+
+function simple_bandlimited_problem(fmin=0.1, fmax=0.4)
+	pa=simple_problem()
+
+	dobs=pa.plsbd.om.d
+	responsetype = Bandpass(fmin,fmax; fs=1)
+	designmethod = Butterworth(8)
+	# zerophase filter please
+	dobs_filt=DSP.Filters.filtfilt(digitalfilter(responsetype, designmethod), dobs)
+
+	# filter dobs
+	pom=pa.plsbd.om
+	return FBD(pom.ntg, pom.nt, pom.nr, pom.nts, dobs=dobs_filt, 
+	    gobs=pom.g, sobs=pom.s,sxp=Sxparam(1,:positive), fmin=fmin, fmax=fmax)
+
 end
 
 #Source Time Functions are always positive

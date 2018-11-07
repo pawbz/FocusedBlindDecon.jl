@@ -22,6 +22,8 @@ using Dates
 
 global const to = TimerOutput(); # create a timer object
 
+global STF_FLAG=false
+global FILT_FLAG=false
 
 struct UseOptim end
 struct UseIterativeSolvers end
@@ -29,8 +31,10 @@ struct UseIterativeSolvers end
 global optG
 global optS
 
-function __init__()
-	global optG, optS
+
+
+function __init__(;stf=false, filt=false)
+	global optG, optS, STF_FLAG
 	if(get(ENV, "FOCUSBD_OPTG","not_set") == "iterativesolvers")
 		@info "FocusBD using IterativeSolvers.jl for G"
 		optG=UseIterativeSolvers() 
@@ -45,6 +49,14 @@ function __init__()
 		@info "FocusBD using Optim.jl for S"
 		optS=UseOptim() 
 	end
+
+	if(stf)
+		STF_FLAG=true
+	end
+	if(filt)
+		FILT_FLAG=true
+	end
+	return nothing
 end
 
 const DC=DeConv

@@ -15,19 +15,17 @@ DC.__init__()
 pa=DC.random_problem();
 convergence_test(1e-6)
 
-pa=DC.random_problem(stf=true);
-convergence_test(1e-4)
-
-ENV["FOCUSBD_OPTG"]="iterativesolvers"
-ENV["FOCUSBD_OPTS"]="optim"
-DC.__init__()
-pa=DC.random_problem(stf=true);
-convergence_test(1e-4)
 
 ENV["FOCUSBD_OPTG"]="iterativesolvers"
 ENV["FOCUSBD_OPTS"]="iterativesolvers"
 DC.__init__()
 pa=DC.random_problem();
-convergence_test(1e-6)
+convergence_test(1e-5)
+
+ENV["FOCUSBD_OPTG"]="iterativesolvers"
+ENV["FOCUSBD_OPTS"]="iterativesolvers"
+DC.__init__(stf=true)
+pa=DC.random_problem();
+convergence_test(1e-4)
 
 
