@@ -33,7 +33,7 @@ function fbd!(pa::FBD, io=stdout; tasks=[:restart, :fibd, :fpr, :updateS], fibd_
 
 	if(:restart ∈ tasks)
 		# initialize
-		DeConv.initialize!(pa.pfibd)
+		initialize!(pa.pfibd)
 	end
 
 	if(:fibd ∈ tasks)

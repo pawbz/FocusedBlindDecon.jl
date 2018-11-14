@@ -1,5 +1,5 @@
 
-using DeConv
+using FocusedBD
 using Test
 using LinearAlgebra
 using Misfits

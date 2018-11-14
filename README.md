@@ -14,7 +14,7 @@ sobs=randn(nt)
 ```
 Allocation of memory necessary to perform BD
 ```julia
-bdpa=DeConv.BD(ntg, nt, nr, gobs=gobs, sobs=sobs);
+bdpa=FocusedBD.BD(ntg, nt, nr, gobs=gobs, sobs=sobs);
 ```
 
 ```julia
@@ -22,5 +22,5 @@ plotobsmodel(pa.om)
 ```
 
 ```julia
-DeConv.bd!(pa)
+FocusedBD.bd!(pa)
 ```

@@ -1,5 +1,5 @@
 # blind deconvolution
-module DeConv
+module FocusedBD
 
 using Inversion
 using Misfits
@@ -59,8 +59,8 @@ function __init__(;stf=false, filt=false)
 	return nothing
 end
 
-const DC=DeConv
-export DC
+const FBD=FocusedBD
+export FBD
 
 struct Sxparam
 	n::Int64
