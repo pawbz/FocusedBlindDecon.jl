@@ -1,4 +1,12 @@
 # Focused Blind Deconvolution (FBD)
+```latex
+@article{bharadwaj2018focused,
+  title={Focused blind deconvolution},
+  author={Bharadwaj, Pawan and Demanet, Laurent and Fournier, Aim{\'e}},
+  journal={arXiv preprint arXiv:1808.00166},
+  year={2018}
+}
+```
 
 A multi-channel blind deconvolution (BD) example is here. Choose the length of the Green's functions, source signal and data vectors:
 ```julia
