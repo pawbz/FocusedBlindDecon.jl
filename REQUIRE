@@ -1,11 +1,1 @@
-CSV
-DSP
-DataFrames
-FFTW
-IterativeSolvers
-LineSearches
-LinearMaps
-Optim
-RecipesBase
-StatsBase
-TimerOutputs
+julia 0.7-
