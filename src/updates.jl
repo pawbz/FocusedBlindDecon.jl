@@ -176,13 +176,14 @@ function update_stf!(pa::BD,)
 			       nothing, norm_flag=false)
 	s2 = copy(pa.optm.cal.s)
 
-	println("ffffffff", f1, "\t",f2)
-
 	# sxp is not used here, because the estimated g after fpr has ambiguous sign
 	# as a result, positivity constraint cannot be imposed on s
 	if(f1<f2)
 		copyto!(pa.optm.cal.s, s1)
-		rmul!(pa.optm.cal.g, -1.0)
+		rmul!(pa.optm.cal.g, -1.0) # change sign back
+	else
+		# no need to change sign of g
+		copyto!(pa.optm.cal.s, s2)
 	end
 
 	return nothing

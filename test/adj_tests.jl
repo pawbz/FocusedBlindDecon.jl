@@ -1,4 +1,4 @@
-pa=DC.simple_problem()
+pa=FBD.simple_problem()
 
 function adjtest()
 	x=randn(size(F,2))
@@ -15,16 +15,16 @@ end
 
 @testset "IBD" begin
 	global p=pa.pfibd
-	for attrib in [DC.S(), DC.G()]
-		global F=DC.operator(p, attrib);
+	for attrib in [FBD.S(), FBD.G()]
+		global F=FBD.operator(p, attrib);
 		adjtest()
 	end
 end
 
 @testset "BD" begin
 	global p=pa.plsbd
-	for attrib in [DC.S(), DC.G()]
-		global F=DC.operator(p, attrib);
+	for attrib in [FBD.S(), FBD.G()]
+		global F=FBD.operator(p, attrib);
 		adjtest()
 	end
 end
@@ -32,8 +32,8 @@ end
 
 
 # adj tests of filter
-pa=DC.P_bandpass(Float64, fmin=0.1, fmax=0.4, order=4, nt=101)
-global F=DC.create_operator(pa)
+pa=FBD.P_bandpass(Float64, fmin=0.1, fmax=0.4, nt=101)
+global F=FBD.create_operator(pa)
 @testset "bandpass" begin
 	adjtest()
 end

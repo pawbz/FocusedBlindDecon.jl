@@ -76,7 +76,7 @@ function BD(ntg, nt, nr, nts;
 	opG=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 	opS=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 
-	pbandpass=DC.P_bandpass(T, fmin=0.2, fmax=0.4, nt=optm.nt)
+	pbandpass=P_bandpass(T, fmin=0.2, fmax=0.4, nt=optm.nt)
 
 	pa=BD(
 		om,		optm,			gx,		sx,	sxp, snorm_flag,

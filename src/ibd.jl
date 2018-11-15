@@ -91,8 +91,8 @@ function IBD(ntg, nt, nr, nts;
 	opS=LinearMap{T}(x->0.0, y->0.0,1,1, ismutating=true)
 
 
-	pbandpassG=DC.P_bandpass(T, fmin=fmin, fmax=fmax, nt=optm.ntg)
-	pbandpassS=DC.P_bandpass(T, fmin=fmin, fmax=fmax, nt=optm.nts)
+	pbandpassG=P_bandpass(T, fmin=fmin, fmax=fmax, nt=optm.ntg)
+	pbandpassS=P_bandpass(T, fmin=fmin, fmax=fmax, nt=optm.nts)
 
 
 	pa=IBD{T}(om, optm, gx, sx, sxp, sx_fix_zero_lag_flag, 
