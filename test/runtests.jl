@@ -1,5 +1,5 @@
 
-using FocusedBD
+using FocusedBlindDecon
 using Test
 using LinearAlgebra
 using Misfits

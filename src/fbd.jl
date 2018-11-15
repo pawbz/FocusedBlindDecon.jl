@@ -1,12 +1,12 @@
 
-mutable struct FBD{T}
+mutable struct Param{T}
 	pfibd::IBD{T}
 	pfpr::FPR
 	plsbd::BD{T}
 end
 
 
-function FBD(ntg, nt, nr, nts;
+function Param(ntg, nt, nr, nts;
 	       dobs=nothing, 
 	       gobs=nothing, 
 	       sobs=nothing, 
@@ -24,12 +24,12 @@ function FBD(ntg, nt, nr, nts;
 	  sxp=sxp,
 		 fft_threads=true, verbose=false, fftwflag=FFTW.MEASURE);
 
-	return FBD(pfibd, pfpr, plsbd)
+	return Param(pfibd, pfpr, plsbd)
 
 end
 
 
-function fbd!(pa::FBD, io=stdout; tasks=[:restart, :fibd, :fpr, :updateS], fibd_tol=[1e-10,1e-6])
+function fbd!(pa::Param, io=stdout; tasks=[:restart, :fibd, :fpr, :updateS], fibd_tol=[1e-10,1e-6])
 
 	if(:restart ∈ tasks)
 		# initialize
@@ -86,7 +86,7 @@ function random_problem()
 	if(STF_FLAG)
 		sobs=abs.(sobs);
 	end
-	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=sxp)
+	return Param(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=sxp)
 end
 
 
@@ -103,7 +103,7 @@ function simple_problem()
 	nt=ntg*tfact
 	nts=nt-ntg+1;
 	sobs=(randn(nts));
-	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=Sxparam(1,:positive))
+	return Param(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=Sxparam(1,:positive))
 end
 
 function simple_bandlimited_problem(fmin=0.1, fmax=0.4)
@@ -117,7 +117,7 @@ function simple_bandlimited_problem(fmin=0.1, fmax=0.4)
 
 	# filter dobs
 	pom=pa.plsbd.om
-	return FBD(pom.ntg, pom.nt, pom.nr, pom.nts, dobs=dobs_filt, 
+	return Param(pom.ntg, pom.nt, pom.nr, pom.nts, dobs=dobs_filt, 
 	    gobs=pom.g, sobs=pom.s,sxp=Sxparam(1,:positive), fmin=fmin, fmax=fmax)
 
 end
@@ -136,5 +136,5 @@ function simple_STF_problem()
 	nt=ntg*tfact
 	nts=nt-ntg+1;
 	sobs=abs.(randn(nts));
-	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs, sxp=Sxparam(2,:positive))
+	return Param(ntg, nt, nr, nts, gobs=gobs, sobs=sobs, sxp=Sxparam(2,:positive))
 end

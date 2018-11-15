@@ -1,7 +1,7 @@
 # define tgrid while storing cross-correlations
 xcorr_range(tgrid)=range(-1*abs(tgrid[end]-tgrid[1]),stop=abs(tgrid[end]-tgrid[1]),length=2*length(tgrid)-1)
 
-function save(pa::FBD, folder; tgridg=nothing, tgrid=nothing, tgrids=nothing)
+function save(pa::Param, folder; tgridg=nothing, tgrid=nothing, tgrids=nothing)
 	!(isdir(folder)) && error("invalid directory")
 
 	save(pa.pfibd,folder,tgridg=tgridg, tgrid=tgrid,tgrids=tgrids)
