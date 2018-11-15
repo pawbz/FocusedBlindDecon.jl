@@ -105,6 +105,7 @@ function update_all!(pa, io=stdout;
 		     ParamAM_func=nothing, 
 		     roundtrip_tol=1e-6,
 		     optim_tols=[1e-6, 1e-6], verbose=true,
+		     log_file=false,
 		     )
 
 	global to, optG, optS
@@ -135,8 +136,10 @@ function update_all!(pa, io=stdout;
 	Inversion.go(paam, io)  # run alternative minimization
 
 	# save log file
-	AMlogfile=joinpath(pwd(),string("AM",Dates.now(),".log"))
-	CSV.write(AMlogfile, paam.log)
+	if(log_file)
+		AMlogfile=joinpath(pwd(),string("AM",Dates.now(),".log"))
+		CSV.write(AMlogfile, paam.log)
+	end
 
 	write(io,string(to))
 	write(io, "\n")

@@ -69,7 +69,7 @@ end
 Update `g`, whereever w is non zero
 """
 function update!(g::AbstractMatrix, w::AbstractMatrix, pa::FPR;
-		 focus_flag=false)
+		 focus_flag=false, log_file=false)
 
 	if(focus_flag)
 		pax=pa.p_misfit_xcorr_focus
@@ -129,10 +129,12 @@ function update!(g::AbstractMatrix, w::AbstractMatrix, pa::FPR;
 		g[i]=Optim.minimizer(res)[i]
 	end
 
-	# save log file
-	PRlogfile=joinpath(pwd(),string("PR",Dates.now(),".log"))
-	CSV.write(PRlogfile, 
-	   DataFrame(hcat(0:Optim.iterations(res), Optim.f_trace(res))))
+	if(log_file)
+		# save log file
+		PRlogfile=joinpath(pwd(),string("PR",Dates.now(),".log"))
+		CSV.write(PRlogfile, 
+		   DataFrame(hcat(0:Optim.iterations(res), Optim.f_trace(res))))
+	end
 
 	return g
 end
