@@ -3,6 +3,10 @@ mutable struct Param{T}
 	pfibd::IBD{T}
 	pfpr::FPR
 	plsbd::BD{T}
+	g::Matrix{T}
+	gxcorr::Matrix{T}
+	s::Vector{T}
+	sa::Vector{T}
 end
 
 
@@ -16,15 +20,17 @@ function Param(ntg, nt, nr, nts;
 	       ) 
 	pfibd=IBD(ntg, nt, nr, nts, gobs=gobs, dobs=dobs, sobs=sobs, 
 		  fft_threads=true, fftwflag=FFTW.MEASURE,
-		  verbose=false, sxp=sxp, sx_fix_zero_lag_flag=true, fmin=fmin, fmax=fmax);
+		  verbose=false, sxp=sxp, 
+		  sx_fix_zero_lag_flag=true, fmin=fmin, fmax=fmax);
 
-	pfpr=FPR(ntg, nr)
+	pfpr=FPR(ntg, nr, )
 
 	plsbd=BD(ntg, nt, nr, nts, dobs=dobs, gobs=gobs, sobs=sobs, 
 	  sxp=sxp,
 		 fft_threads=true, verbose=false, fftwflag=FFTW.MEASURE);
 
-	return Param(pfibd, pfpr, plsbd)
+	return Param(pfibd, pfpr, plsbd, plsbd.optm.cal.g, pfibd.optm.cal.g, 
+	      plsbd.optm.cal.s,	pfibd.optm.cal.s)
 
 end
 
@@ -51,7 +57,14 @@ function fbd!(pa::Param, io=stdout; tasks=[:restart, :fibd, :fpr, :updateS], fib
 	Random.randn!(g)
 
 	if(:fpr ∈ tasks)
-		fpr!(g,  pa.pfpr, precon=:focus)
+		fill!(pa.pfpr.g, 0.0)
+		#update_f_index_loaded!(pa.pfpr)
+		fpr!(g,  pa.pfpr, 
+       #precon=[:focus, :pr], 
+       precon=[:pr], 
+	       #index_loaded=pa.pfpr.index_loaded, 
+	       index_loaded=70, 
+       						show_trace=true, g_tol=1e-4)
 	end
 
 	if(:updateS ∈ tasks)

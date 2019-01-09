@@ -118,7 +118,8 @@ function update_all!(pa, io=stdout;
 				    min_roundtrips=10,
 				    verbose=verbose,
 				    reinit_func=xxx->initialize!(pa),
-				    after_roundtrip_func=x->(write(io,string(TimerOutputs.flatten(to),"\n"))),
+				    #after_roundtrip_func=x->(write(io,string(TimerOutputs.flatten(to),"\n"))),
+				    #after_roundtrip_func=x->(err!(pa, nothing)),
 				    )
 	end
 

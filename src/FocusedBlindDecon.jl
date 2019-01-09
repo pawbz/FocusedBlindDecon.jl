@@ -19,10 +19,12 @@ using DSP
 using FFTW
 using LinearAlgebra
 using Dates
+using JLD
 
 global const to = TimerOutput(); # create a timer object
 
 global STF_FLAG=false
+global SDP_FLAG=false
 global FILT_FLAG=false
 
 struct UseOptim end
@@ -31,18 +33,20 @@ struct UseIterativeSolvers end
 global optG
 global optS
 
+global 
 
 
-function __init__(;stf=false, filt=false)
-	global optG, optS, STF_FLAG
-	if(get(ENV, "FOCUSBD_OPTG","not_set") == "iterativesolvers")
+function __init__(;stf=false, filt=false, sdp=false, optg="iterativesolvers", 
+		  opts=optg)
+	global optG, optS, STF_FLAG, SDP_FLAG
+	if(isequal(optg,"iterativesolvers"))
 		@info "FocusBD using IterativeSolvers.jl for G"
 		optG=UseIterativeSolvers() 
 	else
 		@info "FocusBD using Optim.jl for G"
 		optG=UseOptim() 
 	end
-	if(get(ENV, "FOCUSBD_OPTS","not_set") == "iterativesolvers")
+	if(isequal(opts,"iterativesolvers"))
 		@info "FocusBD using IterativeSolvers.jl for S"
 		optS=UseIterativeSolvers() 
 	else
@@ -51,7 +55,12 @@ function __init__(;stf=false, filt=false)
 	end
 
 	if(stf)
+		@info "S will always be positive"
 		STF_FLAG=true
+	end
+	if(sdp)
+		@info "positive semidefinite programming for S"
+		SDP_FLAG=true
 	end
 	if(filt)
 		FILT_FLAG=true
@@ -70,6 +79,7 @@ end
 
 
 include("types.jl")
+include("toeplitz.jl")
 include("fpr.jl")
 include("bd.jl")
 include("common.jl")

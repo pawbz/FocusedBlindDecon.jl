@@ -9,21 +9,15 @@ function convergence_test(tol=1e-3)
 end
 
 
-ENV["FOCUSBD_OPTG"]="optim"
-ENV["FOCUSBD_OPTS"]="optim"
-FBD.__init__()
+FBD.__init__(optg="optim", opts="optim")
 pa=FBD.random_problem();
 convergence_test(1e-3)
 
 
-ENV["FOCUSBD_OPTG"]="iterativesolvers"
-ENV["FOCUSBD_OPTS"]="iterativesolvers"
 FBD.__init__()
 pa=FBD.random_problem();
 convergence_test(1e-3)
 
-ENV["FOCUSBD_OPTG"]="iterativesolvers"
-ENV["FOCUSBD_OPTS"]="iterativesolvers"
 FBD.__init__(stf=true)
 pa=FBD.random_problem();
 convergence_test(1e-3)

@@ -18,6 +18,8 @@ mutable struct IBD{T}
 	opS::LinearMaps.LinearMap{T}
 	pbandpassG::P_bandpass{T}
 	pbandpassS::P_bandpass{T}
+	# if eigenvalue decomposition of toeplitz(s) is necessary
+	toepS::Array{T,2}
 end
 
 
@@ -58,7 +60,8 @@ function IBD(ntg, nt, nr, nts;
 	om=ObsModel(ntg, nt, nr, nts, T, d=dobs, g=gobs, s=sobs)
 
 	# create interferometric Optim 
-	optm=OptimModel(2*ntg-1, 2*nt-1, binomial(nr, 2)+nr, 2*nts-1, T, fftwflag=fftwflag, 
+	optm=OptimModel(2*ntg-1, 2*nt-1, 
+		 binomial(nr, 2)+nr, 2*nts-1, T, fftwflag=fftwflag, 
 	slags=[nts-1, nts-1], 
 	dlags=[nt-1, nt-1], 
 	glags=[ntg-1, ntg-1], 
@@ -94,9 +97,9 @@ function IBD(ntg, nt, nr, nts;
 	pbandpassG=P_bandpass(T, fmin=fmin, fmax=fmax, nt=optm.ntg)
 	pbandpassS=P_bandpass(T, fmin=fmin, fmax=fmax, nt=optm.nts)
 
-
 	pa=IBD{T}(om, optm, gx, sx, sxp, sx_fix_zero_lag_flag, 
-	:g, verbose, err, opG, opS, pbandpassG, pbandpassS)
+	:g, verbose, err, opG, opS, pbandpassG, pbandpassS,
+	zeros(nts,nts))
 
 
 	# update operators
@@ -176,6 +179,36 @@ function update_finalize!(pa::IBD, ::S)
 		mul!(pa.optm.sfilt, bp, pa.optm.cal.s)
 		copyto!(pa.optm.cal.s,pa.optm.sfilt)
 		# 
+		if(isequal(pa.sxp.n,1) && pa.sx_fix_zero_lag_flag)
+			pa.optm.cal.s[pa.om.nts]=0.0
+		end
+	end
+
+	if(SDP_FLAG)
+		if(isequal(pa.sxp.n,1) && pa.sx_fix_zero_lag_flag)
+			pa.optm.cal.s[pa.om.nts]=1.0
+		end
+		# view the positive lags
+		sp=view(pa.optm.cal.s, pa.om.nts:2*pa.om.nts-1)
+		# create a Toeplitz matrix
+		toeplitz!(pa.toepS,sp)
+		eigS=eigen(pa.toepS)
+		v=eigS.values; vv=eigS.vectors;
+		if(any(v.<0.0))
+			println("SDP PROJECTED\t", v)
+		end
+		v=Diagonal(broadcast(x->max(x,0),v))
+		copyto!(pa.toepS,vv*v*vv')
+
+		# view postive and zero lags of first column
+		sp=view(pa.toepS,:,1)
+		for i in 1:pa.om.nts-1
+			# put same in positive lags (normalize with zero lag)
+			pa.optm.cal.s[pa.om.nts+i]=sp[i+1]*inv(sp[1])
+			# put same in negative lags (normalize with zero lag)
+			pa.optm.cal.s[pa.om.nts-i]=sp[i+1]*inv(sp[1])
+		end
+
 		if(isequal(pa.sxp.n,1) && pa.sx_fix_zero_lag_flag)
 			pa.optm.cal.s[pa.om.nts]=0.0
 		end
@@ -406,11 +439,10 @@ function whiteness_focusing(pa::IBD, attrib=:obs)
 	J = 0.0
 	for ir in 1:nr
 		gg=view(g, :, irr)
-		JJ = 0.0
-		fact=inv(gg[ntg]*gg[ntg])
+		JJ=0.0
+		#fact=inv(gg[ntg]*gg[ntg])
 		for i in eachindex(gg)
-			JJ += gg[i] * gg[i] * fact  * abs((ntg-i)/(ntg    -1))
-
+			JJ += abs2(gg[i]) * abs2((ntg-i)/(ntg-1))
 		end
 		J += JJ
 		irr+=nr-(ir-1)
@@ -633,13 +665,15 @@ function err!(pa::IBD, io=stdout; cal=pa.optm.cal)
 	push!(pa.err[:d],f)
 	push!(pa.err[:g],fg)
 	push!(pa.err[:g_nodecon],fg_nodecon)
-	write(io,"Interferometric Blind Decon Errors\t\n")
-	write(io,"==================\n")
-	if(io==stdout)
-		display(pa.err)
-	else
-		write(io, string(pa.err))
+	if(!(io===nothing))
+		write(io,"Interferometric Blind Decon Errors\t\n")
+		write(io,"==================\n")
+		if(io==stdout)
+			display(pa.err)
+		else
+			write(io, string(pa.err))
+		end
+		write(io, "\n")
 	end
-	write(io, "\n")
 end 
 

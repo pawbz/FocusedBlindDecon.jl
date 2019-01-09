@@ -326,6 +326,25 @@ end
 
 
 
+"""
+Compute front load, independent of translation, assuming that the most front-loaded channel is 1.
+"""
+function front_load(x)
+	nt=size(x,1)
+	nr=size(x,2)
+	err=[]
+	for is in 1:size(x,1)
+		x1=circshift(x,(is,0))
+
+		J=0.0
+		for it in 1:nt
+			J += abs2(x1[it,1]) * abs2(it-1)
+		end
+		push!(err,J)
+	end
+	return minimum(err)
+end
+
 
 
 
@@ -336,27 +355,34 @@ print?
 give either cal 
 """
 function err!(pa::BD, io=stdout; cal=pa.optm.cal) 
-	xg_nodecon=hcat(Conv.xcorr(pa.om.d,Conv.P_xcorr(pa.om.nt, pa.om.nr, cglags=[pa.optm.ntg-1, pa.optm.ntg-1]))...)
-	xgobs=hcat(Conv.xcorr(pa.om.g)...) # compute xcorr with reference g
-	fs = Misfits.error_after_normalized_autocor(cal.s, pa.optm.obs.s)
-	xgcal=hcat(Conv.xcorr(cal.g)...) # compute xcorr with reference g
-	fg = Misfits.error_squared_euclidean!(nothing, xgcal, xgobs, nothing, norm_flag=true)
-	fg_nodecon = Misfits.error_squared_euclidean!(nothing, xg_nodecon, xgobs, nothing, norm_flag=true)
+	#xg_nodecon=hcat(Conv.xcorr(pa.om.d,Conv.P_xcorr(pa.om.nt, pa.om.nr, cglags=[pa.optm.ntg-1, pa.optm.ntg-1]))...)
+	#xgobs=hcat(Conv.xcorr(pa.om.g)...) # compute xcorr with reference g
+	#fs = Misfits.error_after_normalized_autocor(cal.s, pa.optm.obs.s)
+	#xgcal=hcat(Conv.xcorr(cal.g)...) # compute xcorr with reference g
+	#fg = Misfits.error_squared_euclidean!(nothing, xgcal, xgobs, nothing, norm_flag=true)
+	#fg_nodecon = Misfits.error_squared_euclidean!(nothing, xg_nodecon, xgobs, nothing, norm_flag=true)
+	fg_nodecon= 0.0
+
 	f = Misfits.error_squared_euclidean!(nothing, cal.d, pa.optm.obs.d, nothing, norm_flag=true)
+	#fs = Misfits.error_after_translation(cal.s, pa.optm.obs.s)[1]
+	fs = 0.0
+	fg = Misfits.error_after_translation(cal.g, pa.optm.obs.g)[1]
 
 	whiteness=Conv.func_grad!(nothing, cal.g, Conv.P_misfit_weighted_acorr(pa.om.ntg,pa.om.nr))
 
-	front_load=Misfits.front_load!(nothing, cal.g)
+	fload=front_load(cal.g) # assuming ir ==1!?
 
 	push!(pa.err[:s],fs)
 	push!(pa.err[:d],f)
 	push!(pa.err[:g],fg)
 	push!(pa.err[:whiteness],whiteness)
-	push!(pa.err[:front_load],front_load)
+	push!(pa.err[:front_load],fload)
 	push!(pa.err[:g_nodecon],fg_nodecon)
-	write(io,"Blind Decon Errors\t\n")
-	write(io,"==================\n")
-	write(io, string(pa.err))
+	if(!(io===nothing))
+		write(io,"Blind Decon Errors\t\n")
+		write(io,"==================\n")
+		write(io, string(pa.err))
+	end
 end 
 
 function update_g!(pa::BD, xg)
