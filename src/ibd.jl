@@ -38,6 +38,7 @@ function IBD(ntg, nt, nr, nts;
 	       verbose=false,
 	       fmin=0.15,
 	       fmax=0.45,
+	       size_check=true,
 	       ) 
 
 	# determine type of IBD
@@ -49,8 +50,10 @@ function IBD(ntg, nt, nr, nts;
 		(T1≠T2) ? error("type difference") : (T=T1)
 	end
 
-	if(ntg+nts-1 ≠ nt)
-		error("invalid sizes for convolutional model")
+	if(size_check)
+		if(ntg+nts-1 ≠ nt)
+			error("invalid sizes for convolutional model")
+		end
 	end
 
 	# use maximum threads for fft only for patient

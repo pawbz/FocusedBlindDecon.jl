@@ -1,5 +1,5 @@
 
-function stacked_spectrum!(dobs)
+function stacked_spectrum!(dobs; fs=1.0)
 	D=rfft(dobs,1) # perform rfft
 	window=zeros(size(D,1))        
 	nr=size(dobs,2)        
@@ -11,7 +11,7 @@ function stacked_spectrum!(dobs)
 	end        
 	rmul!(window,inv(maximum(abs,window)))
 	window = 10. * log10.(window)        
-	return Float64.(DSP.Util.rfftfreq((size(dobs,1)))), window
+	return Float64.(DSP.Util.rfftfreq((size(dobs,1)),fs)), window
 end
 
 
