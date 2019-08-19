@@ -38,11 +38,14 @@ function BD(ntg, nt, nr, nts;
 	       ) 
 	# determine type of IBD
 	if(!(dobs===nothing))
+		(size(dobs)≠(nt,nr)) && error("dobs size error")
 		T=eltype(dobs)
 	else
 		T1=eltype(sobs)
 		T2=eltype(gobs)
 		(T1≠T2) ? error("type difference") : (T=T1)
+		(size(sobs)≠(nts)) && error("sobs size error")
+		(size(gobs)≠(ntg,nr)) && error("sobs size error")
 	end
 
 
