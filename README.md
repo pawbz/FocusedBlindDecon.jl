@@ -1,3 +1,9 @@
+[![](https://img.shields.io/badge/docs-dev-blue.svg)](https://pawbz.github.io/FocusedBlindDecon.jl/dev)
+2
+[![Build Status](https://travis-ci.org/pawbz/FocusedBlindDecon.jl.svg?branch=master)](https://travis-ci.org/pawbz/FocusedBlindDecon.jl)
+3
+[![codecov](https://codecov.io/gh/pawbz/FocusedBlindDecon.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/pawbz/FocusedBlindDecon.jl)
+
 # Focused Blind Deconvolution (FBD)
 
 ## Attribution
