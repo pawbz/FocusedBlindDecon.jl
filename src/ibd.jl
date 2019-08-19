@@ -137,7 +137,10 @@ function IBD(ntg, nt, nr, nts;
 	copyto!(pa.optm.obs.d, dobs) # overwrites the forward modelling done in previous steps  
 
 	# normalize the observed data to 1.0
-	rmul!(pa.optm.obs.d, inv(maximum(pa.optm.obs.d)))
+	scal=maximum(pa.optm.obs.d)
+
+	rmul!(pa.optm.obs.d, inv(scal))
+	rmul!(pa.optm.obs.g, inv(scal)) # to be consistent, mutiple gobs, if necessary 
 
 	initialize!(pa)
 

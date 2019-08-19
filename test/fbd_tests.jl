@@ -18,8 +18,5 @@ FBD.__init__()
 pa=FBD.random_problem();
 convergence_test(1e-3)
 
-FBD.__init__(stf=true)
-pa=FBD.random_problem();
-convergence_test(1e-3)
 
 

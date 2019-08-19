@@ -1,10 +1,17 @@
 # Focused Blind Deconvolution (FBD)
+
+## Attribution
+If you make use of this code, please cite the following paper.
 ```latex
-@article{bharadwaj2018focused,
+@article{bharadwaj2019focused,
   title={Focused blind deconvolution},
   author={Bharadwaj, Pawan and Demanet, Laurent and Fournier, Aim{\'e}},
-  journal={arXiv preprint arXiv:1808.00166},
-  year={2018}
+  journal={IEEE Transactions on Signal Processing},
+  volume={67},
+  number={12},
+  pages={3168--3180},
+  year={2019},
+  publisher={IEEE}
 }
 ```
 
