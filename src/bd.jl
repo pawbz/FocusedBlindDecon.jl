@@ -35,6 +35,7 @@ function BD(ntg, nt, nr, nts;
 	       fft_threads=false,
 	       fftwflag=FFTW.PATIENT,
 	       dobs=nothing, gobs=nothing, sobs=nothing, verbose=false, attrib_inv=:g,
+	       size_check=true,
 	       ) 
 	# determine type of IBD
 	if(!(dobs===nothing))
@@ -49,8 +50,10 @@ function BD(ntg, nt, nr, nts;
 	end
 
 
-	if(ntg+nts-1 ≠ nt)
-		error("invalid sizes for convolutional model")
+	if(size_check)
+		if(ntg+nts-1 ≠ nt)
+			error("invalid sizes for convolutional model")
+		end
 	end
 
 	# use maximum threads for fft

@@ -17,17 +17,18 @@ function Param(ntg, nt, nr, nts;
 	       sxp=Sxparam(1,:positive),
 	       fmin=0.0,
 	       fmax=0.5,
+	       size_check=true,
 	       ) 
 	pfibd=IBD(ntg, nt, nr, nts, gobs=gobs, dobs=dobs, sobs=sobs, 
 		  fft_threads=true, fftwflag=FFTW.MEASURE,
 		  verbose=false, sxp=sxp, 
-		  sx_fix_zero_lag_flag=true, fmin=fmin, fmax=fmax);
+		  sx_fix_zero_lag_flag=true, fmin=fmin, fmax=fmax, size_check=size_check);
 
 	pfpr=FPR(ntg, nr, )
 
 	plsbd=BD(ntg, nt, nr, nts, dobs=dobs, gobs=gobs, sobs=sobs, 
 	  sxp=sxp,
-		 fft_threads=true, verbose=false, fftwflag=FFTW.MEASURE);
+		 fft_threads=true, verbose=false, fftwflag=FFTW.MEASURE, size_check=size_check);
 
 	return Param(pfibd, pfpr, plsbd, plsbd.optm.cal.g, pfibd.optm.cal.g, 
 	      plsbd.optm.cal.s,	pfibd.optm.cal.s)
@@ -60,10 +61,10 @@ function fbd!(pa::Param, io=stdout; tasks=[:restart, :fibd, :fpr, :updateS], fib
 		fill!(pa.pfpr.g, 0.0)
 		#update_f_index_loaded!(pa.pfpr)
 		fpr!(g,  pa.pfpr, 
-       #precon=[:focus, :pr], 
-       precon=[:pr], 
+       precon=[:focus, :pr], 
+       #precon=[:pr], 
 	       #index_loaded=pa.pfpr.index_loaded, 
-	       index_loaded=70, 
+	       index_loaded=1, 
        						show_trace=true, g_tol=1e-4)
 	end
 
