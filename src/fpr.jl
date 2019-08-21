@@ -246,6 +246,6 @@ end
 
 function err!(pa::FPR, g) 
 	fg = Misfits.error_after_translation(g, pa.gobs)[1]
-	push!(pa.err[:g],fg)
+	push!(pa.err[!,:g],fg)
 	return false
 end
