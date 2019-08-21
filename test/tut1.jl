@@ -2,6 +2,7 @@
 using Conv
 using FocusedBlindDecon
 using Plots
+pyplot()
 
 # We consider an illustrative synthetic experiment with the following parameters.
 ntg=30 # number of time samples in `g`
@@ -32,26 +33,23 @@ S=Conv.S(sobs, gsize=[ntg,nr], dsize=[nt,nr], slags=[nts-1,0]);
 dobs=reshape(S*vec(gobs), nt, nr);
 #+
 
-# This package performs LSBD i.e., least-squares fitting, without regularization, of `dobs` to jointly 
-# optimize the arrays `g` and `s`. The joint optimization is
-# carried out using alternating minimization in one cycle, we fix one array and optimize the other, and then fix the other 
-# and optimize the first. 
-# Several cycles are expected to be performed to reach convergence.
-# In order to do so, we first need to allocate a parameter variable `pa`, where the inputs `gobs` and `sobs` are optional.  
+# We first need to allocate a parameter variable `pa`, where the inputs `gobs` and `sobs` are optional.  
 pa=P_fbd(ntg, nt, nr, nts, dobs=dobs, gobs=gobs, sobs=sobs)
 #+
 
-# Then, we perform LSBD and extract `g`.
-FBD.bd!(pa)
+# The we perform LSBD i.e., least-squares fitting, without regularization, of `dobs` to jointly 
+# optimize the arrays `g` and `s`. 
+FBD.lsbd!(pa)
+#+
 
-# Plot `g` to notice that  to notice that it doesn't match `gobs`.
+# We extract `g` from `pa` and plot to notice that it doesn't match `gobs`.
 p2=plotg(pa[:g], title="LSBD g")
 
-# Now, instead perform FBD!
-# It isolates the indeterminacy due to the amplitude spectrum of
+# Instead, we perform FBD that uses the focusing functionals to regularize `lsbd!`. 
 FBD.fbd!(pa)
+#+
 
-# See the difference.
+# Notice that the extract impulse responses are closer to `gobs`, except for a scaling factor and an overall translation in time.
 p3=plotg(pa[:g], title="FBD g")
 plot(p1,p2,p3, size=(750,500), layout=(1,3))
 

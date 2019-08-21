@@ -1,0 +1,84 @@
+```@meta
+EditURL = "@__REPO_ROOT_URL__/"
+```
+
+Load packages.
+
+```@example tut1
+using Conv
+using FocusedBlindDecon
+using Plots
+pyplot()
+```
+
+We consider an illustrative synthetic experiment with the following parameters.
+
+```@example tut1; continued = true
+ntg=30 # number of time samples in `g`
+nr=20 # number of receivers
+nt=40*ntg # time samples in records `d`
+nts=nt # samples in `s`
+```
+
+The aim is to reconstruct the true `g`, i.e., `gobs`, that we are going to design below. This design
+is of particular interest e.g., in seismic inversion and room acoustics as they reveal
+the arrival of energy, propagated from an impulsive source, at the receivers.
+Here, the arrivals curve linearly and hyperbolically, depending on `c` and have onsets
+depending on `bfrac`. Their amplitudes are determined by `afrac`.
+
+```@example tut1
+gobs=zeros(ntg,nr) # allocate
+FBD.toy_direct_green!(gobs, c=4.0, bfrac=0.20, afrac=1.0); # add arrival 1
+FBD.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=-0.6); # add arrival 2
+plotg=(x;args...)->heatmap(x, size=(250,500), yflip=true, ylabel="time", xlabel="channel";args...) # define a plot recipe
+p1=plotg(gobs, title="True g")
+```
+
+The source signature `s` for the experiment is arbitrary: we simply use a Gaussian random signal.
+
+```@example tut1
+sobs=randn(nts)
+plot(sobs, label="arbitrary source", size=(1000,200))
+```
+
+The next task is to generate synthetic observed records `dobs`:
+first lets construct a linear operator `S`; then applying `S` on `g` will result in measurements `d`.
+This task can be skipped if measured `dobs` are already available.
+
+```@example tut1; continued = true
+S=Conv.S(sobs, gsize=[ntg,nr], dsize=[nt,nr], slags=[nts-1,0]);
+dobs=reshape(S*vec(gobs), nt, nr);
+```
+
+We first need to allocate a parameter variable `pa`, where the inputs `gobs` and `sobs` are optional.
+
+```@example tut1; continued = true
+pa=P_fbd(ntg, nt, nr, nts, dobs=dobs, gobs=gobs, sobs=sobs)
+```
+
+The we perform LSBD i.e., least-squares fitting, without regularization, of `dobs` to jointly
+optimize the arrays `g` and `s`.
+
+```@example tut1; continued = true
+FBD.lsbd!(pa)
+```
+
+We extract `g` from `pa` and plot to notice that it doesn't match `gobs`.
+
+```@example tut1
+p2=plotg(pa[:g], title="LSBD g")
+```
+
+Instead, we perform FBD!
+
+```@example tut1; continued = true
+FBD.fbd!(pa)
+```
+
+Notice that the extract impulse responses are closer to `gobs`.
+
+```@example tut1
+p3=plotg(pa[:g], title="FBD g")
+plot(p1,p2,p3, size=(750,500), layout=(1,3))
+```
+

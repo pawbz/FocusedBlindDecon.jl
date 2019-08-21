@@ -150,11 +150,11 @@ function go(pa::ParamAM, io=stdout)
 			end
 
 			
-			push!(pa.log[:trip], itr)
+			push!(pa.log[!,:trip], itr)
 			for iop in 1:pa.noptim
-				push!(pa.log[Symbol(string("J",iop))], pa.fvec[iop,1])
+				push!(pa.log[!,Symbol(string("J",iop))], pa.fvec[iop,1])
 				if(itr>2)
-					push!(pa.log[Symbol(string("δJ",iop))], rf[iop])
+					push!(pa.log[!,Symbol(string("δJ",iop))], rf[iop])
 				end
 			end
 
@@ -171,9 +171,9 @@ function go(pa::ParamAM, io=stdout)
 					#end
 					write(io,@sprintf( "%d\t|",itr))
 					for iop in 1:pa.noptim
-						push!(pa.log[Symbol(string("J",iop))], pa.fvec[iop,1])
+						push!(pa.log[!,Symbol(string("J",iop))], pa.fvec[iop,1])
 						if(itr>2)
-							push!(pa.log[Symbol(string("δJ",iop))], rf[iop])
+							push!(pa.log[!,Symbol(string("δJ",iop))], rf[iop])
 						end
 						write(io,@sprintf( "\t%0.6e\t",pa.fvec[iop,1]))
 						(itr==1) ? write(io,@sprintf( "\t\t|")) : write(io,@sprintf( "(%0.6e)\t|",rf[iop]))

@@ -62,8 +62,12 @@ end
 
 """
 One can use the `lsbd!` method to perform LSBD over a given instance of `P_fbd` i.e., `pa`.
-LBSD is a least-squares fitting of `d` to optimize the `g` and `s`, which can be accessed via 
+LBSD is a least-squares fitting of `d` to jointly optimize the `g` and `s`, which can be accessed via 
 `pa[:g]` and `pa[:s]`, respectively.
+The joint optimization is
+carried out using alternating minimization: in one cycle, we fix one array and optimize the other, and then fix the other 
+and optimize the first. 
+Several cycles are expected to be performed to reach convergence.
 ```julia
 lsbd!(pa)
 heatmap(pa[:g], title="estimated impulse responses from LSBD")
@@ -77,8 +81,10 @@ end
 
 """
 One can use the `fibd!` method to perform FIBD over a given instance of `P_fbd` i.e., `pa`.
-FIBD is a least-squares fitting of `xd` to optimize the `xg` and `sa`, which can be accessed via 
+FIBD is a least-squares fitting of `xd` to jointly optimize the `xg` and `sa`, which can be accessed via 
 `pa[:xg]` and `pa[:sa]`, respectively.
+The joint optimization is
+carried out using alternating minimization.
 ```julia
 fibd!(pa)
 heatmap(pa[:xg], title="estimated interferometric impulse responses from FIBD")

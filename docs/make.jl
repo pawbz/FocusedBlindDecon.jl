@@ -1,11 +1,14 @@
 using Documenter, FocusedBlindDecon
+using Plots
+pyplot()
 
 makedocs(
 	 format = Documenter.HTML(
 		  prettyurls = get(ENV, "CI", nothing) == "true"),
    sitename = "Focused Blind Deconvolution",
    pages = ["Home" => "index.md",
-	    "Library" => "library.md"
+	    "Library" => "library.md",
+	    "Tutorial I" => "tut1.md"
 	    #"SeisForwExpt" => Any[
 			#	  "LBSD" => "lsbd.md",
 #				  "Basic usage" => "Fdtd/reuse_expt.md",
