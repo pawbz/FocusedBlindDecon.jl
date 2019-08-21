@@ -1,10 +1,19 @@
 [![](https://img.shields.io/badge/docs-dev-blue.svg)](https://pawbz.github.io/FocusedBlindDecon.jl/dev)
-2
 [![Build Status](https://travis-ci.org/pawbz/FocusedBlindDecon.jl.svg?branch=master)](https://travis-ci.org/pawbz/FocusedBlindDecon.jl)
-3
 [![codecov](https://codecov.io/gh/pawbz/FocusedBlindDecon.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/pawbz/FocusedBlindDecon.jl)
 
 # Focused Blind Deconvolution (FBD)
+
+## Installation
+At the moment, `FocusedBlindDecon` depends on two unregistered packages `Misfits` and `Conv`. 
+For complete installation, enter these package manager commands in the REPL:
+```julia
+using Pkg
+Pkg.add(PackageSpec(name="Misfits",url="https://github.com/pawbz/Misfits.jl.git"))
+Pkg.add(PackageSpec(name="Misfits",url="https://github.com/pawbz/Conv.jl.git"))
+Pkg.add(PackageSpec(name="GeoPhyInv",url="https://github.com/pawbz/FocusedBlindDecon.jl.git"))
+```
+
 
 ## Attribution
 If you make use of this code, please cite the following paper.

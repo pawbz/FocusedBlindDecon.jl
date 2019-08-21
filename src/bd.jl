@@ -45,7 +45,7 @@ function BD(ntg, nt, nr, nts;
 		T1=eltype(sobs)
 		T2=eltype(gobs)
 		(T1≠T2) ? error("type difference") : (T=T1)
-		(size(sobs)≠(nts)) && error("sobs size error")
+		(size(sobs)≠(nts,)) && error("sobs size error")
 		(size(gobs)≠(ntg,nr)) && error("sobs size error")
 	end
 

@@ -33,8 +33,7 @@ struct UseIterativeSolvers end
 global optG
 global optS
 
-global 
-
+export P_fbd, fbd!, fibd!, fpr!, lsbd!
 
 function __init__(;stf=false, filt=false, sdp=false, optg="iterativesolvers", 
 		  opts=optg)
@@ -92,6 +91,8 @@ include("updates.jl")
 include("save.jl")
 include("misc.jl")
 include("plots.jl")
+include("getprop.jl")
+include("toygreen.jl")
 
 
 end # module
