@@ -4,19 +4,17 @@
 
 # Focused Blind Deconvolution (FBD)
 
-## Installation
-At the moment, `FocusedBlindDecon` depends on two unregistered packages `Misfits` and `Conv`. 
-For complete installation, enter these package manager commands in the REPL:
-```julia
-using Pkg
-Pkg.add(PackageSpec(name="Misfits",url="https://github.com/pawbz/Misfits.jl.git"))
-Pkg.add(PackageSpec(name="Misfits",url="https://github.com/pawbz/Conv.jl.git"))
-Pkg.add(PackageSpec(name="GeoPhyInv",url="https://github.com/pawbz/FocusedBlindDecon.jl.git"))
-```
+`FocusedBlindDecon` is a Julia package that implements the following methods.
 
+**`lsbd!`** Least-squares blind deconvolution.
 
-## Attribution
-If you make use of this code, please cite the following paper.
+**`fibd!`** Focused interferometric blind deconvolution.
+
+**`fpr!`** Focused phase retrieval.
+
+**`fbd!`** Focused blind deconvolution.
+
+These methods are described in the article below; if you make use of this code, please cite it.
 ```latex
 @article{bharadwaj2019focused,
   title={Focused blind deconvolution},
@@ -30,27 +28,17 @@ If you make use of this code, please cite the following paper.
 }
 ```
 
-A multi-channel blind deconvolution (BD) example is here. Choose the length of the Green's functions, source signal and data vectors:
+
+## Installation
+At the moment, `FocusedBlindDecon` depends on two unregistered packages `Misfits` and `Conv`.
+For complete installation, enter these package manager commands in the REPL:
 ```julia
-ntg=20 # length of Green's functions
-nr=40 # number of receivers
-tfact=80 # 
-nt = ntg*tfact # length of data
-```
-Then, we create some toy Green's functions:
-```julia
-gobs=randn(ntg, nr)
-sobs=randn(nt)
-```
-Allocation of memory necessary to perform BD
-```julia
-bdpa=FocusedBlindDecon.BD(ntg, nt, nr, gobs=gobs, sobs=sobs);
+using Pkg
+Pkg.add(PackageSpec(name="Misfits",url="https://github.com/pawbz/Misfits.jl.git"))
+Pkg.add(PackageSpec(name="Misfits",url="https://github.com/pawbz/Conv.jl.git"))
+Pkg.add(PackageSpec(name="GeoPhyInv",url="https://github.com/pawbz/FocusedBlindDecon.jl.git"))
 ```
 
-```julia
-plotobsmodel(pa.om)
-```
+## Documentation & Tutorials
 
-```julia
-FocusedBlindDecon.bd!(pa)
-```
+A detailed documentation and some tutorials are available here: [![](https://img.shields.io/badge/docs-dev-blue.svg)](https://pawbz.github.io/FocusedBlindDecon.jl/dev)
