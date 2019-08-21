@@ -1,7 +1,6 @@
 using Pkg; Pkg.add("Plots"); Pkg.add("PyPlot")
 using Documenter, FocusedBlindDecon
 using Plots
-pyplot()
 
 makedocs(
 	 format = Documenter.HTML(
