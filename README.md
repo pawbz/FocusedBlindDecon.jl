@@ -12,7 +12,7 @@
 
 **`fpr!`** Focused phase retrieval.
 
-**`fbd!`** Focused blind deconvolution.
+**`fbd!`**=**`fibd!`**+**`fpr!`** Focused blind deconvolution.
 
 These methods are described in the article below; if you make use of this code, please cite it.
 ```latex
@@ -35,8 +35,8 @@ For complete installation, enter these package manager commands in the REPL:
 ```julia
 using Pkg
 Pkg.add(PackageSpec(name="Misfits",url="https://github.com/pawbz/Misfits.jl.git"))
-Pkg.add(PackageSpec(name="Misfits",url="https://github.com/pawbz/Conv.jl.git"))
-Pkg.add(PackageSpec(name="GeoPhyInv",url="https://github.com/pawbz/FocusedBlindDecon.jl.git"))
+Pkg.add(PackageSpec(name="Conv",url="https://github.com/pawbz/Conv.jl.git"))
+Pkg.add(PackageSpec(name="FocusedBlindDecon",url="https://github.com/pawbz/FocusedBlindDecon.jl.git"))
 ```
 
 ## Documentation & Tutorials

@@ -112,7 +112,7 @@ function update_all!(pa, io=stdout;
 	reset_timer!(to)
 
 	if(ParamAM_func===nothing)
-		ParamAM_func=xx->Inversion.ParamAM(xx, optim_tols=optim_tols,name="Blind Decon",
+		ParamAM_func=xx->ParamAM(xx, optim_tols=optim_tols,name="Blind Decon",
 				    roundtrip_tol=roundtrip_tol, max_roundtrips=max_roundtrips,
 				    max_reroundtrips=max_reroundtrips,
 				    min_roundtrips=10,
@@ -134,7 +134,7 @@ function update_all!(pa, io=stdout;
 		io=open(logfilename, "a+")
 	end
 
-	Inversion.go(paam, io)  # run alternative minimization
+	go(paam, io)  # run alternative minimization
 
 	# save log file
 	if(log_file)

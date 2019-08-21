@@ -1,8 +1,9 @@
 # blind deconvolution
 module FocusedBlindDecon
 
-using Inversion
 using Misfits
+using ProgressMeter
+using Printf
 using Conv
 using Optim
 using LineSearches
@@ -76,6 +77,7 @@ end
 
 
 
+include("inversion.jl")
 include("toygreen.jl")
 include("types.jl")
 include("toeplitz.jl")
@@ -129,7 +131,7 @@ function update_func_grad!(pa; goptim=nothing, soptim=nothing, gαvec=nothing, s
 	end
 	pa.attrib_inv=:g
 	# multi-objective framework
-	paMOg=Inversion.ParamMO(noptim=length(goptim), ninv=length(pa.gx.x), αvec=gαvec,
+	paMOg=ParamMO(noptim=length(goptim), ninv=length(pa.gx.x), αvec=gαvec,
 			    		optim_func=optim_funcg,optim_grad=optim_gradg,
 					x_init=randn(length(pa.gx.x),10))
 	# create dfg for optimization
@@ -153,7 +155,7 @@ function update_func_grad!(pa; goptim=nothing, soptim=nothing, gαvec=nothing, s
 
 	pa.attrib_inv=:s
 	# multi-objective framework
-	paMOs=Inversion.ParamMO(noptim=length(soptim), ninv=length(pa.sx.x), αvec=sαvec,
+	paMOs=ParamMO(noptim=length(soptim), ninv=length(pa.sx.x), αvec=sαvec,
 			    		optim_func=optim_funcs,optim_grad=optim_grads,
 					x_init=vcat(ones(1,10),randn(length(pa.sx.x)-1,10)))
 #	pa.dfs = OnceDifferentiable(x -> paMOs.func(x, paMOs),         
