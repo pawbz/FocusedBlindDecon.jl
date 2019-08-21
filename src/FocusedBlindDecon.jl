@@ -3,7 +3,6 @@ module FocusedBlindDecon
 
 using Inversion
 using Misfits
-using Signals
 using Conv
 using Optim
 using LineSearches
@@ -77,6 +76,7 @@ end
 
 
 
+include("toygreen.jl")
 include("types.jl")
 include("toeplitz.jl")
 include("fpr.jl")
@@ -92,7 +92,6 @@ include("save.jl")
 include("misc.jl")
 include("plots.jl")
 include("getprop.jl")
-include("toygreen.jl")
 
 
 end # module

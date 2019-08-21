@@ -201,10 +201,10 @@ function simple_problem()
 	nr=20
 	tfact=20
 	gobs=zeros(ntg, nr)
-	Signals.toy_direct_green!(gobs, c=4.0, bfrac=0.20, afrac=1.0);
-	#Signals.toy_direct_green!(gobs, c=4.0, bfrac=0.4, afrac=1.0);
-	Signals.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=-0.6);
-	#Signals.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=1.0);
+	toy_direct_green!(gobs, c=4.0, bfrac=0.20, afrac=1.0);
+	#toy_direct_green!(gobs, c=4.0, bfrac=0.4, afrac=1.0);
+	toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=-0.6);
+	#toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=1.0);
 	nt=ntg*tfact
 	nts=nt-ntg+1;
 	sobs=(randn(nts));
@@ -234,10 +234,10 @@ function simple_STF_problem()
 	nr=20
 	tfact=20
 	gobs=zeros(ntg, nr)
-	Signals.toy_direct_green!(gobs, c=4.0, bfrac=0.20, afrac=1.0);
-	#Signals.toy_direct_green!(gobs, c=4.0, bfrac=0.4, afrac=1.0);
-	Signals.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=-0.6);
-	#Signals.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=1.0);
+	toy_direct_green!(gobs, c=4.0, bfrac=0.20, afrac=1.0);
+	#toy_direct_green!(gobs, c=4.0, bfrac=0.4, afrac=1.0);
+	toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=-0.6);
+	#toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=1.0);
 	nt=ntg*tfact
 	nts=nt-ntg+1;
 	sobs=abs.(randn(nts));
