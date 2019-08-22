@@ -69,13 +69,13 @@ We extract `g` from `pa` and plot to notice that it doesn't match `gobs`.
 p2=plotg(pa[:g], title="LSBD g")
 ```
 
-Instead, we perform FBD!
+Instead, we perform FBD that uses the focusing functionals to regularize `lsbd!`.
 
 ```@example tut1; continued = true
 FBD.fbd!(pa)
 ```
 
-Notice that the extract impulse responses are closer to `gobs`.
+Notice that the extract impulse responses are closer to `gobs`, except for a scaling factor and an overall translation in time.
 
 ```@example tut1
 p3=plotg(pa[:g], title="FBD g")

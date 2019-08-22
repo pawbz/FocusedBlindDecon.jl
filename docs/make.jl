@@ -1,6 +1,7 @@
-using Pkg; Pkg.add("Plots"); Pkg.add("PyPlot")
+using Pkg; Pkg.add("Plots"); Pkg.add("Plotly")
 using Documenter, FocusedBlindDecon
 using Plots
+plotly()
 
 makedocs(
 	 format = Documenter.HTML(
