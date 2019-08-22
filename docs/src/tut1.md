@@ -7,8 +7,7 @@ Load packages.
 ```@example tut1
 using Conv
 using FocusedBlindDecon
-using Plots
-plotly()
+using Gadfly
 ```
 
 We consider an illustrative synthetic experiment with the following parameters.
@@ -30,15 +29,16 @@ depending on `bfrac`. Their amplitudes are determined by `afrac`.
 gobs=zeros(ntg,nr) # allocate
 FBD.toy_direct_green!(gobs, c=4.0, bfrac=0.20, afrac=1.0); # add arrival 1
 FBD.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=-0.6); # add arrival 2
-plotg=(x;args...)->heatmap(x, size=(250,500), yflip=true, ylabel="time", xlabel="channel";args...) # define a plot recipe
-p1=plotg(gobs, title="True g")
+#plotg=(x;args...)->heatmap(x, size=(250,500), yflip=true, ylabel="time", xlabel="channel";args...) # define a plot recipe
+#p1=plotg(gobs, title="True g")
 ```
 
 The source signature `s` for the experiment is arbitrary: we simply use a Gaussian random signal.
 
 ```@example tut1
 sobs=randn(nts)
-plot(sobs, label="arbitrary source", size=(1000,200))
+#plot(sobs, label="arbitrary source", size=(1000,200))
+plot(x=1:10, y=randn(10))
 ```
 
 The next task is to generate synthetic observed records `dobs`:
@@ -66,7 +66,7 @@ FBD.lsbd!(pa)
 We extract `g` from `pa` and plot to notice that it doesn't match `gobs`.
 
 ```@example tut1
-p2=plotg(pa[:g], title="LSBD g")
+#p2=plotg(pa[:g], title="LSBD g")
 ```
 
 Instead, we perform FBD that uses the focusing functionals to regularize `lsbd!`.
@@ -78,7 +78,7 @@ FBD.fbd!(pa)
 Notice that the extract impulse responses are closer to `gobs`, except for a scaling factor and an overall translation in time.
 
 ```@example tut1
-p3=plotg(pa[:g], title="FBD g")
-plot(p1,p2,p3, size=(750,500), layout=(1,3))
+#p3=plotg(pa[:g], title="FBD g")
+#plot(p1,p2,p3, size=(750,500), layout=(1,3))
 ```
 

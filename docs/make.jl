@@ -1,7 +1,7 @@
-using Pkg; Pkg.add("Plots"); Pkg.add("Plotly")
+using Pkg; Pkg.add("Gadfly");
+
 using Documenter, FocusedBlindDecon
-using Plots
-plotly()
+using Gadfly
 
 makedocs(
 	 format = Documenter.HTML(
