@@ -8,7 +8,7 @@ Load packages.
 using Conv
 using FocusedBlindDecon
 using Plots
-pyplot()
+plotly()
 ```
 
 We consider an illustrative synthetic experiment with the following parameters.

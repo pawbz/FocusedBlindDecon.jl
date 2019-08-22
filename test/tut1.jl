@@ -2,7 +2,7 @@
 using Conv
 using FocusedBlindDecon
 using Plots
-pyplot()
+plotly()
 
 # We consider an illustrative synthetic experiment with the following parameters.
 ntg=30 # number of time samples in `g`
