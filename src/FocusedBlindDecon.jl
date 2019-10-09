@@ -33,7 +33,7 @@ struct UseIterativeSolvers end
 global optG
 global optS
 
-export P_fbd, fbd!, fibd!, fpr!, lsbd!
+export P_fbd, fbd!, fibd!, fpr!, lsbd!, ibd!
 
 function __init__(;stf=false, filt=false, sdp=false, optg="iterativesolvers", 
 		  opts=optg)

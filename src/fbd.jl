@@ -79,6 +79,11 @@ function lsbd!(pa::P_fbd, io=stdout; args...)
 end
 
 
+function ibd!(pa::P_fbd, io=stdout; args...)
+	ibd!(pa.pfibd, io; args...)
+	return nothing
+end
+
 """
 One can use the `fibd!` method to perform FIBD over a given instance of `P_fbd` i.e., `pa`.
 FIBD is a least-squares fitting of `xd` to jointly optimize the `xg` and `sa`, which can be accessed via 

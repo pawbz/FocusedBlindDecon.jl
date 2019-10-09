@@ -56,3 +56,18 @@ function Base.getindex(pa::P_fbd, s::Symbol)
 	end
 end
 
+
+function Base.getindex(pa::BD, s::Symbol)
+	@assert s in [:s, :sobs, :g, :gobs, :d, :dobs]
+	if(s==:s)
+		return pa.optm.cal.s
+	elseif(s==:sobs)
+		return pa.optm.obs.s
+	elseif(s==:g)
+		return pa.optm.cal.g
+	elseif(s==:d)
+		return pa.optm.cal.d
+	elseif(s==:dobs)
+		return pa.optm.obs.d
+	end
+end

@@ -75,12 +75,16 @@ end
 function ObsModel(ntg, nt, nr, nts, T::DataType;
 	       d=nothing, 
 	       g=nothing, 
-	       s=nothing)
+	       s=nothing,
+	       slags=[nts-1, 0],
+	       glags=nothing,
+	       dlags=nothing
+	       )
 	(s===nothing) && (s=zeros(nts))
 	(g===nothing) && (g=zeros(ntg,nr))
 	if(d===nothing)
 		(iszero(g) || iszero(s)) && error("need gobs and sobs")
-		obstemp=Conv.P_conv(T,ssize=[nts], dsize=[nt,nr], gsize=[ntg,nr], slags=[nts-1, 0])
+		obstemp=Conv.P_conv(T,ssize=[nts], dsize=[nt,nr], gsize=[ntg,nr], slags=slags, dlags=dlags, glags=glags)
 		copyto!(obstemp.g, g)
 		copyto!(obstemp.s, s)
 		Conv.mod!(obstemp, Conv.D()) # do a convolution to model data

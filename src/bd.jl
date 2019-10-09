@@ -23,6 +23,9 @@ end
 Constructor for the blind deconvolution problem
 """
 function BD(ntg, nt, nr, nts; 
+	slags=[nts-1, 0], 
+	dlags=[nt-1, 0], 
+	glags=[ntg-1, 0], 
 	    gprecon_attrib=:none,
 	       sxp=Sxparam(1,:all),
 	       gweights=nothing,
@@ -35,7 +38,7 @@ function BD(ntg, nt, nr, nts;
 	       fft_threads=false,
 	       fftwflag=FFTW.PATIENT,
 	       dobs=nothing, gobs=nothing, sobs=nothing, verbose=false, attrib_inv=:g,
-	       size_check=true,
+	       size_check=false,
 	       ) 
 	# determine type of IBD
 	if(!(dobs===nothing))
@@ -60,13 +63,16 @@ function BD(ntg, nt, nr, nts;
 	fft_threads &&  (FFTW.set_num_threads(Sys.CPU_THREADS))
 
 	# store observed data
-	om=ObsModel(ntg, nt, nr, nts, T, d=dobs, g=gobs, s=sobs)
+	om=ObsModel(ntg, nt, nr, nts, T, d=dobs, g=gobs, s=sobs,
+	slags=slags, 
+	dlags=dlags, 
+	glags=glags, )
 
 	# create models depending on mode
 	optm=OptimModel(ntg, nt, nr, nts, T, fftwflag=fftwflag, 
-	slags=[nts-1, 0], 
-	dlags=[nt-1, 0], 
-	glags=[ntg-1, 0], 
+	slags=slags, 
+	dlags=dlags, 
+	glags=glags, 
 		 )
 
 	# inversion variables allocation
