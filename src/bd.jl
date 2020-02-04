@@ -246,7 +246,7 @@ function inear(gobs, threshold=1e-6)
 end
 
 
-function bd!(pa::BD, io=stdout; tol=1e-6)
+function fit!(pa::BD, io=stdout; tol=1e-6)
 
 	if(io===nothing)
 		logfilename=joinpath(pwd(),string("XBD",Dates.now(),".log"))

@@ -1,9 +1,9 @@
 """
-This package defines a `P_fbd` type to represent the FBD model, and provides a set of methods to access its properties.
-In order to generate an instance of `P_fbd`, use the following command, where the description of the arguments 
+This package defines a `FBD` type to represent the FBD model, and provides a set of methods to access its properties.
+In order to generate an instance of `FBD`, use the following command, where the description of the arguments 
 and keywords is given below.
 ```julia
-pa=P_fbd(ntg, nt, nr, nts; dobs, gobs, sobs)
+pa=FBD(ntg, nt, nr, nts; dobs, gobs, sobs)
 ```
 # Arguments
 Let `(ntg,nr)=size(g)`, `(nt,nr)=size(d)` and `(nts,)=size(s)`, where
@@ -25,7 +25,7 @@ Let `(ntg,nr)=size(g)`, `(nt,nr)=size(d)` and `(nts,)=size(s)`, where
 
 **`sobs`** (optional) similarly, it is the true source.
 """
-mutable struct P_fbd{T}
+mutable struct FBD{T}
 	pfibd::IBD{T}
 	pfpr::FPR
 	plsbd::BD{T}
@@ -35,7 +35,7 @@ mutable struct P_fbd{T}
 	sa::Vector{T}
 end
 
-function P_fbd(ntg, nt, nr, nts;
+function FBD(ntg, nt, nr, nts;
 	       dobs=nothing, 
 	       gobs=nothing, 
 	       sobs=nothing, 
@@ -55,13 +55,13 @@ function P_fbd(ntg, nt, nr, nts;
 	  sxp=sxp,
 		 fft_threads=true, verbose=false, fftwflag=FFTW.MEASURE, size_check=size_check);
 
-	return P_fbd(pfibd, pfpr, plsbd, plsbd.optm.cal.g, pfibd.optm.cal.g, 
+	return FBD(pfibd, pfpr, plsbd, plsbd.optm.cal.g, pfibd.optm.cal.g, 
 	      plsbd.optm.cal.s,	pfibd.optm.cal.s)
 
 end
 
 """
-One can use the `lsbd!` method to perform LSBD over a given instance of `P_fbd` i.e., `pa`.
+One can use the `lsbd!` method to perform LSBD over a given instance of `FBD` i.e., `pa`.
 LBSD is a least-squares fitting of `d` to jointly optimize the `g` and `s`, which can be accessed via 
 `pa[:g]` and `pa[:s]`, respectively.
 The joint optimization is
@@ -73,19 +73,19 @@ lsbd!(pa)
 heatmap(pa[:g], title="estimated impulse responses from LSBD")
 ```
 """
-function lsbd!(pa::P_fbd, io=stdout; args...) 
+function lsbd!(pa::FBD, io=stdout; args...) 
 	bd!(pa.plsbd, io; args...)
 	return nothing
 end
 
 
-function ibd!(pa::P_fbd, io=stdout; args...)
+function ibd!(pa::FBD, io=stdout; args...)
 	ibd!(pa.pfibd, io; args...)
 	return nothing
 end
 
 """
-One can use the `fibd!` method to perform FIBD over a given instance of `P_fbd` i.e., `pa`.
+One can use the `fibd!` method to perform FIBD over a given instance of `FBD` i.e., `pa`.
 FIBD is a least-squares fitting of `xd` to jointly optimize the `xg` and `sa`, which can be accessed via 
 `pa[:xg]` and `pa[:sa]`, respectively.
 The joint optimization is
@@ -95,7 +95,7 @@ fibd!(pa)
 heatmap(pa[:xg], title="estimated interferometric impulse responses from FIBD")
 ```
 """
-function fibd!(pa::P_fbd, io=stdout)
+function fibd!(pa::FBD, io=stdout)
 	fibd_tol=[1e-10,1e-6]
 	initialize!(pa.pfibd)
 	fibd!(pa.pfibd, io, α=[Inf],tol=[fibd_tol[1]])
@@ -109,7 +109,7 @@ end
 
 
 """
-After performing FIBD on a `P_fbd` instance `pa`, we can perform FPR to complete FBD.
+After performing FIBD on a `FBD` instance `pa`, we can perform FPR to complete FBD.
 These two code blocks should be equivalent. 
 ```julia
 fibd!(pa)
@@ -121,7 +121,7 @@ fbd!(pa)
 The result of FPR i.e, `g` can be extracted using `pa[:g]`.
 The corresponding source signature is stored in `pa[:s]`.
 """
-function fpr!(pa::P_fbd)
+function fpr!(pa::FBD)
 	# input g from fibd to fpr
 	gobs = (iszero(pa.pfibd.om.g)) ? nothing : pa.pfibd.om.g # choose gobs for nearest receiver or not?
 	update_cymat!(pa.pfpr; cymat=pa.pfibd.optm.cal.g, gobs=gobs)
@@ -146,14 +146,14 @@ end
 
 
 """
-Perform FIBD and FPR to complete FBD of an instance of `P_fbd` i.e., `pa`.
+Perform FIBD and FPR to complete FBD of an instance of `FBD` i.e., `pa`.
 ```julia
 fbd!(pa)
 plot(pa[:g], title="estimated impulse responses using FBD")
 plot(pa[:s], title="estimated source using FBD")
 ```
 """
-function fbd!(pa::P_fbd, io=stdout; tasks=[:restart, :fibd, :fpr])
+function fbd!(pa::FBD, io=stdout; tasks=[:restart, :fibd, :fpr])
 
 	if(:restart ∈ tasks)
 		# initialize
@@ -202,7 +202,7 @@ function random_problem()
 	if(STF_FLAG)
 		sobs=abs.(sobs);
 	end
-	return P_fbd(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=sxp)
+	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=sxp)
 end
 
 
@@ -219,7 +219,7 @@ function simple_problem()
 	nt=ntg*tfact
 	nts=nt-ntg+1;
 	sobs=(randn(nts));
-	return P_fbd(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=Sxparam(1,:positive))
+	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs,sxp=Sxparam(1,:positive))
 end
 
 function simple_bandlimited_problem(fmin=0.1, fmax=0.4)
@@ -233,7 +233,7 @@ function simple_bandlimited_problem(fmin=0.1, fmax=0.4)
 
 	# filter dobs
 	pom=pa.plsbd.om
-	return P_fbd(pom.ntg, pom.nt, pom.nr, pom.nts, dobs=dobs_filt, 
+	return FBD(pom.ntg, pom.nt, pom.nr, pom.nts, dobs=dobs_filt, 
 	    gobs=pom.g, sobs=pom.s,sxp=Sxparam(1,:positive), fmin=fmin, fmax=fmax)
 
 end
@@ -252,5 +252,5 @@ function simple_STF_problem()
 	nt=ntg*tfact
 	nts=nt-ntg+1;
 	sobs=abs.(randn(nts));
-	return P_fbd(ntg, nt, nr, nts, gobs=gobs, sobs=sobs, sxp=Sxparam(2,:positive))
+	return FBD(ntg, nt, nr, nts, gobs=gobs, sobs=sobs, sxp=Sxparam(2,:positive))
 end

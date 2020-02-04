@@ -33,7 +33,7 @@ struct UseIterativeSolvers end
 global optG
 global optS
 
-export P_fbd, fbd!, fibd!, fpr!, lsbd!, ibd!
+export FBD,BD,IBD,FPR,fit!
 
 function __init__(;stf=false, filt=false, sdp=false, optg="iterativesolvers", 
 		  opts=optg)
@@ -66,9 +66,6 @@ function __init__(;stf=false, filt=false, sdp=false, optg="iterativesolvers",
 	end
 	return nothing
 end
-
-const FBD=FocusedBlindDecon
-export FBD
 
 struct Sxparam
 	n::Int64

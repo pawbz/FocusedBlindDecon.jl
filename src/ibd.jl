@@ -470,9 +470,9 @@ end
 
 
 """
-Focused Blind Deconvolution
+Focused Interferometric Blind Deconvolution
 """
-function fibd!(pa::IBD, io=stdout; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-4])
+function fit!(pa::IBD, io=stdout; verbose=true, α=[Inf, 0.0], tol=[1e-10,1e-4])
 
 	if(io===nothing)
 		logfilename=joinpath(pwd(),string("XFIBD",Dates.now(),".log"))
