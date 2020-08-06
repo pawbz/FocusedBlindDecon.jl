@@ -95,11 +95,10 @@ fibd!(pa)
 heatmap(pa[:xg], title="estimated interferometric impulse responses from FIBD")
 ```
 """
-function fibd!(pa::P_fbd, io=stdout)
-	fibd_tol=[1e-10,1e-6]
+function fibd!(pa::P_fbd, io=stdout, tol=[1e-10,1e-6])
 	initialize!(pa.pfibd)
-	fibd!(pa.pfibd, io, α=[Inf],tol=[fibd_tol[1]])
-	fibd!(pa.pfibd, io, α=[0.0],tol=[fibd_tol[2]])
+	fibd!(pa.pfibd, io, α=[Inf],tol=[tol[1]])
+	fibd!(pa.pfibd, io, α=[0.0],tol=[tol[2]])
 
 	# input g from fibd to fpr
 	gobs = (iszero(pa.pfibd.om.g)) ? nothing : pa.pfibd.om.g # choose gobs for nearest receiver or not?

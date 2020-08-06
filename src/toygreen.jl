@@ -19,14 +19,21 @@ function toy_reflec_green!(x; bfrac=0.0, c=1.0, afrac=1.0)
 	return x
 end
 
-function toy_direct_green!(x; bfrac=0.0, c=1.0, afrac=1.0)
+
+
+
+"""
+* nearest receiver
+"""
+function toy_direct_green!(x; bfrac=0.0, c=1.0, afrac=1.0, ir0=1)
 	nt=size(x,1)
 	nr=size(x,2)
 	c=c*((nr)/(nt-1))
 
 	it0=1+round(Int,bfrac*nt)
 	for ir in 1:nr
-		it=round(Int, it0+(ir)*inv(c))
+		irr=abs(ir-ir0)
+		it=round(Int, it0+(irr)*inv(c))
 		if(it<=nt)
 			x[it, ir]=1.0*afrac
 		end

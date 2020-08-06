@@ -135,7 +135,7 @@ function P_bandpass(T=Float64;
 	difftp=plan_irfft(complex.(zeros(T, nrfft)),l,[1]) 
 
 	filter=ones(T,nrfft)
-	ω=rfftfreq(l)
+	ω=FFTW.rfftfreq(l)
 	for i in eachindex(filter)
 		filter[i]=(((ω[i]-fmin)*(fmax-ω[i])) ≥ 0.0) ? 1.0 : 0.0
 	end

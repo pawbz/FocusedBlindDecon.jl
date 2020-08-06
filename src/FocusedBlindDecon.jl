@@ -27,8 +27,11 @@ global STF_FLAG=false
 global SDP_FLAG=false
 global FILT_FLAG=false
 
-struct UseOptim end
-struct UseIterativeSolvers end
+abstract type Solver end
+struct UseOptim<:Solver end
+struct UseIterativeSolvers<:Solver end
+struct UseGrad<:Solver end # Just one gradient descent step 
+struct UseGradNMF<:Solver end # Just one gradient step and then projection on R⁺
 
 global optG
 global optS
@@ -83,6 +86,7 @@ include("types.jl")
 include("toeplitz.jl")
 include("fpr.jl")
 include("bd.jl")
+include("bdsvi.jl")
 include("common.jl")
 include("ibd.jl")
 include("fbd.jl")

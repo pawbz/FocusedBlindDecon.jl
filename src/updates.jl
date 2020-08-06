@@ -1,4 +1,94 @@
 
+# project x onto R⁺
+function prox!(x)
+	for i in eachindex(x)
+		x[i] = max(x[i], 0.0)
+	end
+end
+
+include("customoptimizer.jl")
+
+# take a single step in the gradient direction using LineSearches.jl
+function update!(pa, x, attrib, opt::Union{UseGradNMF,UseGrad})
+	update_prepare!(pa, attrib)
+
+	# prepare b
+	for i in eachindex(pa.optm.dvec)
+		pa.optm.dvec[i]=pa.optm.obs.d[i]
+	end
+
+	# put the value from model to x
+	model_to_x!(x, pa, attrib)
+
+	f =x1->func_grad!(nothing, x1,  pa, attrib) 
+	g! = (g,x1)->func_grad!(g, x1,  pa, attrib)
+	fg! = (g,x1)->func_grad!(g, x1,  pa, attrib)
+
+	if(typeof(opt) == UseGradNMF)
+		gdoptimize(f, g!, fg!, x, true)
+	else
+		gdoptimize(f, g!, fg!, x, false)
+	end
+
+	x_to_model!(x, pa, attrib)
+
+	J=func_grad!(nothing, x,  pa, attrib)
+
+	update_finalize!(pa, attrib)
+	 
+	return J
+end
+
+
+
+
+# take a single step in the gradient direction using LineSearches.jl
+function update_old!(pa, x, attrib, ::UseGradNMF)
+	update_prepare!(pa, attrib)
+
+	# prepare b
+	for i in eachindex(pa.optm.dvec)
+	#	pa.optm.dvec[i]=pa.optm.obs.d[i]
+	end
+
+	# put the value from model to x
+	model_to_x!(x, pa, attrib)
+
+	xx = copy(x);
+	gvec = similar(x);
+	f =x->func_grad!(nothing, x,  pa, attrib) 
+	f0=func_grad!(gvec, x,  pa, attrib)
+
+	alpha=1.0
+	min_stepsize=1e-10
+	stepsize=1.0
+	
+	while alpha > min_stepsize
+#		println("trying...",alpha)
+		stepsize=alpha
+		axpy!(-stepsize,gvec,xx)
+	#	prox!(xx)
+		if f(xx) < f0
+			copyto!(x, xx)
+			alpha *= 1.05
+			break                
+		else # the stepsize was too big; undo and try again only smaller                    
+			copyto!(xx, x)
+			alpha *= .7                  
+			if alpha < min_stepsize               
+				alpha = min_stepsize * 1.1    
+				break         
+			end      
+		end
+	end
+
+	x_to_model!(x, pa, attrib)
+
+	update_finalize!(pa, attrib)
+	 
+	return f(x)
+end
+
 
 # core algorithm using IterativeSolvers.jl
 function update!(pa, x, attrib, ::UseIterativeSolvers)
@@ -31,23 +121,78 @@ end
 function update!(pa, x, attrib, ::UseOptim) 
 	update_prepare!(pa, attrib)
 
+	# put the value from model to x
+	model_to_x!(x, pa, attrib)
+
 	f =x->func_grad!(nothing, x,  pa, attrib) 
 	g! =(storage, x)->func_grad!(storage, x,  pa, attrib)
 
-	# put the value from model to x
-	model_to_x!(x, pa, attrib)
 
 	res = optimize(f, g!, 
 		x, ConjugateGradient(alphaguess = LineSearches.InitialQuadratic()),
 		Optim.Options(g_tol = 1e-8, iterations = 2000, show_trace = false))
+
 	pa.verbose && println(res)
 
-	x_to_model!(Optim.minimizer(res), pa, attrib)
+	# extract result
+	xx=Optim.minimizer(res)
+	x_to_model!(xx, pa, attrib) # put result in pa
+	copyto!(x,xx) # put result in x
 
 	update_finalize!(pa, attrib)
 
 	return Optim.minimum(res)
 end
+
+# take a gradient step and then project
+function update!(pa, x, attrib, ) 
+	update_prepare!(pa, attrib)
+
+	# put the value from model to x
+	model_to_x!(x, pa, attrib)
+
+	function f(x)
+#		for xi in x
+#			if(xi < 0)
+#				return Inf
+#			end
+#		end
+		# project on R+
+		for i in eachindex(x)
+			x[i] = max(x[i], 0.0)
+		#	x[i] = xx[i]
+		end
+
+		return func_grad!(nothing, x,  pa, attrib) 
+	end
+
+	g! =(storage, x)->func_grad!(storage, x,  pa, attrib)
+
+	res = optimize(f, g!, 
+		x, 
+		GradientDescent(linesearch = LineSearches.BackTracking()),
+		Optim.Options(g_tol = 1e-12,
+		iterations = 2, ))
+
+	pa.verbose && println(res)
+
+	# extract result
+	xx=Optim.minimizer(res)
+	x_to_model!(xx, pa, attrib) # put result in pa
+
+	# project on R+
+	for i in eachindex(x)
+		x[i] = max(xx[i], 0.0)
+#		x[i] = xx[i]
+	end
+
+	update_finalize!(pa, attrib)
+
+	return f(x)
+	#Optim.minimum(res)
+end
+
+
 
 #=
 # use bounded Optim.jl (ConjugateGradients) (for positive Source Time Functions)
