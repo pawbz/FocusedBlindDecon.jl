@@ -167,7 +167,7 @@ end
 
 """
 """
-function fpr!(g::AbstractMatrix, pa::FPR, io=stdout; precon=[:focus,:pr], 
+function fit!(g::AbstractMatrix, pa::FPR, io=stdout; precon=[:focus,:pr], 
 	      show_trace=false, index_loaded, g_tol=1e-4, eps=0.9:-0.1:0.1,
 	      w=nothing)
 

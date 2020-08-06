@@ -3,11 +3,11 @@
 Let `pa` be in instance of the FBD model.
 Its properties can be easily accessed as using the following `getindex` calls.
 
-**`pa[:s]`** returns the source, either estimated after `fbd!` or `lsbd!`, from the model.
+**`pa[:s]`** returns the source, estimated after `fit!`.
 
-**`pa[:sa]`** returns the auto-correlated source, estimated after `fibd!`.
+**`pa[:sa]`** returns the auto-correlated source, estimated after `fit!`.
 
-**`pa[:g]`** returns the channel impulse responses, estimated after `fbd!` or `lsbd!`.
+**`pa[:g]`** returns the channel impulse responses, estimated after `fit!`.
 
 **`pa[:xg]`** returns the interferometric channel impulse responses estimated after `fibd!`.
 
@@ -21,11 +21,11 @@ Its properties can be easily accessed as using the following `getindex` calls.
 
 **`pa[:xgobs]`** returns the true interferometric channel impulse responses, if stored.
 
-**`pa[:dobs]`** returns the measured channel outputs that `fbd!` or `lsbd!` aims to factorize.
+**`pa[:dobs]`** returns the measured channel outputs that `fit!` aims to factorize.
 
 **`pa[:xdobs]`** returns the measured interferometric channel outputs that `fibd!` aims to factorize.
 """
-function Base.getindex(pa::P_fbd, s::Symbol)
+function Base.getindex(pa::FBD, s::Symbol)
 	@assert s in [:s, :sobs, :g, :gobs, :d, :dobs, :xg, :xgobs, :sa, :saobs, :xd, :xdobs]
 	if(s==:s)
 		return pa.plsbd.optm.cal.s
