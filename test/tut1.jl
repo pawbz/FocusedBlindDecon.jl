@@ -33,7 +33,7 @@ dobs=reshape(S*vec(gobs), nt, nr);
 #+
 
 # We first need to allocate a parameter variable `pa`, where the inputs `gobs` and `sobs` are optional.  
-pa=P_fbd(ntg, nt, nr, nts, dobs=dobs, gobs=gobs, sobs=sobs)
+pa=FBD(ntg, nt, nr, nts, dobs=dobs, gobs=gobs, sobs=sobs)
 #+
 
 # The we perform LSBD i.e., least-squares fitting, without regularization, of `dobs` to jointly 
