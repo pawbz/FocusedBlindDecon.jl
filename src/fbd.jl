@@ -74,13 +74,13 @@ heatmap(pa[:g], title="estimated impulse responses from LSBD")
 ```
 """
 function lsbd!(pa::FBD, io=stdout; args...) 
-	bd!(pa.plsbd, io; args...)
+	fit!(pa.plsbd, io; args...)
 	return nothing
 end
 
 
 function ibd!(pa::FBD, io=stdout; args...)
-	ibd!(pa.pfibd, io; args...)
+	fit!(pa.pfibd, io; args...)
 	return nothing
 end
 
@@ -97,8 +97,8 @@ heatmap(pa[:xg], title="estimated interferometric impulse responses from FIBD")
 """
 function fibd!(pa::FBD, io=stdout, tol=[1e-10,1e-6])
 	initialize!(pa.pfibd)
-	fibd!(pa.pfibd, io, α=[Inf],tol=[tol[1]])
-	fibd!(pa.pfibd, io, α=[0.0],tol=[tol[2]])
+	fit!(pa.pfibd, io, α=[Inf],tol=[tol[1]])
+	fit!(pa.pfibd, io, α=[0.0],tol=[tol[2]])
 
 	# input g from fibd to fpr
 	gobs = (iszero(pa.pfibd.om.g)) ? nothing : pa.pfibd.om.g # choose gobs for nearest receiver or not?
@@ -131,7 +131,7 @@ function fpr!(pa::FBD)
 
 	fill!(pa.pfpr.g, 0.0)
 	#update_f_index_loaded!(pa.pfpr)
-	fpr!(g,  pa.pfpr, 
+	fit!(g,  pa.pfpr, 
         precon=[:focus, :pr], 
         #precon=[:pr], 
 	#index_loaded=pa.pfpr.index_loaded, 

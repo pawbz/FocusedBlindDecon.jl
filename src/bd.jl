@@ -384,12 +384,12 @@ function err!(pa::BD, io=stdout; cal=pa.optm.cal)
 
 	fload=front_load(cal.g) # assuming ir ==1!?
 
-	push!(pa.err[:s],fs)
-	push!(pa.err[:d],f)
-	push!(pa.err[:g],fg)
-	push!(pa.err[:whiteness],whiteness)
-	push!(pa.err[:front_load],fload)
-	push!(pa.err[:g_nodecon],fg_nodecon)
+	push!(pa.err[!,:s],fs)
+	push!(pa.err[!,:d],f)
+	push!(pa.err[!,:g],fg)
+	push!(pa.err[!,:whiteness],whiteness)
+	push!(pa.err[!,:front_load],fload)
+	push!(pa.err[!,:g_nodecon],fg_nodecon)
 	if(!(io===nothing))
 		write(io,"Blind Decon Errors\t\n")
 		write(io,"==================\n")

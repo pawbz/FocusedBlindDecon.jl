@@ -16,8 +16,8 @@ nts=nt # samples in `s`
 # Here, the arrivals curve linearly and hyperbolically, depending on `c` and have onsets 
 # depending on `bfrac`. Their amplitudes are determined by `afrac`.
 gobs=zeros(ntg,nr) # allocate
-FBD.toy_direct_green!(gobs, c=4.0, bfrac=0.20, afrac=1.0); # add arrival 1
-FBD.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=-0.6); # add arrival 2
+FocusedBlindDecon.toy_direct_green!(gobs, c=4.0, bfrac=0.20, afrac=1.0); # add arrival 1
+FocusedBlindDecon.toy_reflec_green!(gobs, c=1.5, bfrac=0.35, afrac=-0.6); # add arrival 2
 plotg=(x,args...)->spy(x, Guide.xlabel("channel"), Guide.ylabel("time"),args...) # define a plot recipe 
 p1=plotg(gobs, Guide.title("True g"))
 
@@ -38,14 +38,14 @@ pa=FBD(ntg, nt, nr, nts, dobs=dobs, gobs=gobs, sobs=sobs)
 
 # The we perform LSBD i.e., least-squares fitting, without regularization, of `dobs` to jointly 
 # optimize the arrays `g` and `s`. 
-FBD.lsbd!(pa)
+FocusedBlindDecon.lsbd!(pa)
 #+
 
 # We extract `g` from `pa` and plot to notice that it doesn't match `gobs`.
 p2=plotg(pa[:g], Guide.title("LSBD g"))
 
 # Instead, we perform FBD that uses the focusing functionals to regularize `lsbd!`. 
-FBD.fbd!(pa)
+FocusedBlindDecon.fbd!(pa)
 #+
 
 # Notice that the extract impulse responses are closer to `gobs`, except for a scaling factor and an overall translation in time.
